@@ -142,6 +142,15 @@ class EmailVerification(db.Model):
     used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class Version(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    version = db.Column(db.String(20), nullable=False, unique=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    release_date = db.Column(db.DateTime, default=datetime.utcnow)
+    is_current = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 @login_manager.user_loader
 def load_user(user_id: str):
     try:
@@ -651,11 +660,15 @@ def admin_dashboard():
     processing_orders = Order.query.filter_by(status='processing').count()
     total_users = User.query.count()
     
+    # 获取当前版本信息
+    current_version = Version.query.filter_by(is_current=True).first()
+    
     return render_template('admin/dashboard.html',
                          total_orders=total_orders,
                          pending_orders=pending_orders,
                          processing_orders=processing_orders,
                          total_users=total_users,
+                         current_version=current_version,
                          now=datetime.utcnow())
 
 @app.route('/admin/products')
@@ -1231,6 +1244,76 @@ def admin_update_order_rules():
     flash('订单规则更新成功', 'success')
     return redirect(url_for('admin_settings'))
 
+# 版本管理路由
+@app.route('/admin/versions')
+@admin_required
+def admin_versions():
+    versions = Version.query.order_by(Version.release_date.desc()).all()
+    return render_template('admin/versions.html', versions=versions)
+
+@app.route('/admin/versions/new', methods=['GET', 'POST'])
+@admin_required
+def admin_new_version():
+    if request.method == 'POST':
+        version = request.form['version']
+        title = request.form['title']
+        description = request.form['description']
+        
+        # 检查版本号是否已存在
+        if Version.query.filter_by(version=version).first():
+            flash('该版本号已存在', 'error')
+            return render_template('admin/version_form.html')
+        
+        # 如果设置为当前版本，先将其他版本设为非当前
+        is_current = 'is_current' in request.form
+        if is_current:
+            Version.query.update({'is_current': False})
+        
+        new_version = Version(
+            version=version,
+            title=title,
+            description=description,
+            is_current=is_current
+        )
+        
+        db.session.add(new_version)
+        db.session.commit()
+        
+        flash('版本信息添加成功', 'success')
+        return redirect(url_for('admin_versions'))
+    
+    return render_template('admin/version_form.html')
+
+@app.route('/admin/versions/<int:version_id>/set-current')
+@admin_required
+def admin_set_current_version(version_id):
+    version = Version.query.get_or_404(version_id)
+    
+    # 将所有版本设为非当前
+    Version.query.update({'is_current': False})
+    
+    # 设置当前版本
+    version.is_current = True
+    db.session.commit()
+    
+    flash(f'已将版本 {version.version} 设为当前版本', 'success')
+    return redirect(url_for('admin_versions'))
+
+@app.route('/admin/versions/<int:version_id>/delete')
+@admin_required
+def admin_delete_version(version_id):
+    version = Version.query.get_or_404(version_id)
+    
+    if version.is_current:
+        flash('不能删除当前版本', 'error')
+        return redirect(url_for('admin_versions'))
+    
+    db.session.delete(version)
+    db.session.commit()
+    
+    flash('版本信息删除成功', 'success')
+    return redirect(url_for('admin_versions'))
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -1253,5 +1336,37 @@ if __name__ == '__main__':
             admin.password_hash = generate_password_hash(admin_password)
             db.session.commit()
             print(f"管理员密码已更新：用户名 {admin_username}")
+        
+        # 创建初始版本1.01
+        if not Version.query.filter_by(version='1.01').first():
+            initial_version = Version(
+                version='1.01',
+                title='Moly代购网站 v1.01 - 完整功能版本',
+                description='''## 主要功能
+- ✅ 用户注册登录系统（邮箱验证码）
+- ✅ 商品管理（上架/下架/多图上传）
+- ✅ 购物车功能（添加/移除/结算）
+- ✅ 订单管理（创建/支付/状态跟踪）
+- ✅ 付款截图上传与验证
+- ✅ 采购清单导出
+- ✅ 用户地址管理
+- ✅ 管理员后台
+- ✅ 自动取消未支付订单
+- ✅ 深浅主题切换
+- ✅ 图片放大查看
+- ✅ 封面图片设置
+- ✅ 版本管理系统
+
+## 技术特性
+- Flask + SQLAlchemy + Bootstrap 5
+- 环境变量配置
+- 跨平台兼容（Windows/Linux）
+- 响应式设计
+- 安全验证码系统''',
+                is_current=True
+            )
+            db.session.add(initial_version)
+            db.session.commit()
+            print("初始版本1.01已创建")
     
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -103,6 +103,12 @@
                                 <i class="bi bi-gear"></i> 系统设置
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint in ['admin_versions', 'admin_new_version'] %}active{% endif %}" 
+                               href="{{ url_for('admin_versions') }}">
+                                <i class="bi bi-tags"></i> 版本管理
+                            </a>
+                        </li>
                     </ul>
                     <hr class="text-white">
                     <ul class="nav flex-column">

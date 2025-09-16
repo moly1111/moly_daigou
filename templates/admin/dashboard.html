@@ -116,9 +116,25 @@
                 <h6 class="m-0 font-weight-bold text-primary">系统信息</h6>
             </div>
             <div class="card-body">
+                {% if current_version %}
                 <div class="mb-3">
-                    <strong>系统版本：</strong> v1.0.0
+                    <strong>当前版本：</strong> 
+                    <span class="badge bg-primary">{{ current_version.version }}</span>
                 </div>
+                <div class="mb-3">
+                    <strong>版本标题：</strong> 
+                    <small class="text-muted">{{ current_version.title }}</small>
+                </div>
+                <div class="mb-3">
+                    <strong>发布日期：</strong> 
+                    {{ current_version.release_date.strftime('%Y-%m-%d') }}
+                </div>
+                {% else %}
+                <div class="mb-3">
+                    <strong>系统版本：</strong> 
+                    <span class="badge bg-secondary">未设置</span>
+                </div>
+                {% endif %}
                 <div class="mb-3">
                     <strong>运行环境：</strong> Python Flask
                 </div>
@@ -128,6 +144,14 @@
                 <div class="mb-0">
                     <strong>最后更新：</strong> {{ now|cn_time('%Y-%m-%d') if now else '' }}
                 </div>
+                {% if current_version %}
+                <hr>
+                <div class="text-center">
+                    <a href="{{ url_for('admin_versions') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-tags"></i> 版本管理
+                    </a>
+                </div>
+                {% endif %}
             </div>
         </div>
 
