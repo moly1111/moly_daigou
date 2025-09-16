@@ -1,0 +1,179 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}系统设置{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- 收款二维码设置 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">收款二维码设置</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin_update_qrcodes') }}" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="alipay_qr" class="form-label">支付宝收款码</label>
+                            <input type="file" class="form-control" id="alipay_qr" name="alipay_qr" accept="image/*">
+                            <div class="form-text">支持jpg、png、webp格式，最大2MB</div>
+                            {% if alipay_qr %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('static', filename='uploads/' + alipay_qr) }}" 
+                                     class="qrcode-preview" alt="支付宝二维码">
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="wechat_qr" class="form-label">微信收款码</label>
+                            <input type="file" class="form-control" id="wechat_qr" name="wechat_qr" accept="image/*">
+                            <div class="form-text">支持jpg、png、webp格式，最大2MB</div>
+                            {% if wechat_qr %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('static', filename='uploads/' + wechat_qr) }}" 
+                                     class="qrcode-preview" alt="微信二维码">
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-upload"></i> 更新二维码
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 订单规则设置 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">订单规则设置</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin_update_order_rules') }}">
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="auto_cancel_enabled" 
+                                   name="auto_cancel_enabled" value="true" 
+                                   {{ 'checked' if auto_cancel_enabled == 'true' else '' }}>
+                            <label class="form-check-label" for="auto_cancel_enabled">
+                                启用自动取消未支付订单
+                            </label>
+                        </div>
+                        <div class="form-text">开启后，系统将自动取消超过指定时间未付款的订单</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="auto_cancel_hours" class="form-label">自动取消时间（小时）</label>
+                        <input type="number" class="form-control" id="auto_cancel_hours" name="auto_cancel_hours" 
+                               value="{{ auto_cancel_hours }}" min="1" max="168">
+                        <div class="form-text">订单创建后多少小时未付款将自动取消（1-168小时）</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 保存设置
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 封面设置 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">首页封面图</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin_update_cover') }}" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="cover" class="form-label">封面图片</label>
+                        <input type="file" class="form-control" id="cover" name="cover" accept="image/*">
+                        <div class="form-text">jpg/png/webp，建议宽度≥1200px</div>
+                    </div>
+                    {% if site_cover %}
+                    <div class="mb-3">
+                        <img src="{{ url_for('static', filename='uploads/' + site_cover) }}" style="max-width:100%" class="img-thumbnail">
+                    </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-image"></i> 更新封面
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- 系统信息 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">系统信息</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>系统版本：</strong> v1.0.0
+                </div>
+                <div class="mb-3">
+                    <strong>运行环境：</strong> Python Flask
+                </div>
+                <div class="mb-3">
+                    <strong>数据库：</strong> SQLite
+                </div>
+                <div class="mb-3">
+                    <strong>邮件服务：</strong> 已集成
+                </div>
+                <div class="mb-0">
+                    <strong>定时任务：</strong> 已启用
+                </div>
+            </div>
+        </div>
+
+        <!-- 设置说明 -->
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">设置说明</h6>
+            </div>
+            <div class="card-body">
+                <h6>收款二维码</h6>
+                <p class="text-muted small">上传支付宝和微信收款二维码，用户可以在订单详情页看到</p>
+
+                <h6>自动取消规则</h6>
+                <p class="text-muted small">设置订单自动取消的时间，避免长期占用库存</p>
+
+                <h6>邮件通知</h6>
+                <p class="text-muted small">订单状态变更时会自动发送邮件通知用户</p>
+
+                <h6>数据备份</h6>
+                <p class="text-muted small">建议定期备份数据库文件</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 文件上传预览
+document.getElementById('alipay_qr').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file && file.size > 2 * 1024 * 1024) {
+        alert('文件大小不能超过2MB');
+        e.target.value = '';
+        return;
+    }
+});
+
+document.getElementById('wechat_qr').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file && file.size > 2 * 1024 * 1024) {
+        alert('文件大小不能超过2MB');
+        e.target.value = '';
+        return;
+    }
+});
+
+// 自动取消设置联动
+document.getElementById('auto_cancel_enabled').addEventListener('change', function(e) {
+    const hoursInput = document.getElementById('auto_cancel_hours');
+    hoursInput.disabled = !e.target.checked;
+});
+</script>
+{% endblock %}

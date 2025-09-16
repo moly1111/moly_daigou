@@ -1,0 +1,154 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}订单管理{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('admin_new_order') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle"></i> 创建订单
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">订单列表</h6>
+        <small class="text-muted">支持按状态、付款、时间范围与关键词过滤</small>
+    </div>
+    <div class="card-body">
+        <!-- 筛选表单 -->
+        <form method="GET" class="mb-4">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label mb-1">订单状态</label>
+                    <select name="status" class="form-select">
+                        <option value="all" {{ 'selected' if status_filter == 'all' else '' }}>全部状态</option>
+                        <option value="pending" {{ 'selected' if status_filter == 'pending' else '' }}>待支付</option>
+                        <option value="processing" {{ 'selected' if status_filter == 'processing' else '' }}>处理中</option>
+                        <option value="done" {{ 'selected' if status_filter == 'done' else '' }}>已完成</option>
+                        <option value="canceled" {{ 'selected' if status_filter == 'canceled' else '' }}>已取消</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-1">付款状态</label>
+                    <select name="paid" class="form-select">
+                        <option value="all" {{ 'selected' if paid_filter == 'all' else '' }}>全部</option>
+                        <option value="paid" {{ 'selected' if paid_filter == 'paid' else '' }}>仅已付款</option>
+                        <option value="unpaid" {{ 'selected' if paid_filter == 'unpaid' else '' }}>仅未付款</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-1">起始日期</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-calendar-date"></i> 起</span>
+                        <input type="date" name="start_date" class="form-control" value="{{ start_date }}" placeholder="开始日期">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-1">结束日期</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-calendar-date"></i> 止</span>
+                        <input type="date" name="end_date" class="form-control" value="{{ end_date }}" placeholder="结束日期">
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3 mt-1 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label mb-1">关键词</label>
+                    <input type="text" name="search" class="form-control" placeholder="订单号 / 邮箱 / 取消原因 关键字" value="{{ search }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                </div>
+                <div class="col-md-2">
+                    <a href="{{ url_for('admin_orders') }}" class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-arrow-counterclockwise"></i> 重置
+                    </a>
+                </div>
+            </div>
+        </form>
+
+        {% if orders %}
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>订单号</th>
+                        <th>创建时间</th>
+                        <th>用户邮箱</th>
+                        <th>收货人/手机</th>
+                        <th>地址</th>
+                        <th>应付金额</th>
+                        <th>付款状态</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td>
+                            <code>{{ order.order_no }}</code>
+                        </td>
+                        <td>{{ order.created_at|cn_time }}</td>
+                        <td>{{ order.user.email }}</td>
+                        <td>
+                            {% if order.user.address %}
+                                {{ order.user.address.name }}<br>
+                                <small class="text-muted">{{ order.user.address.phone[:3] }}****{{ order.user.address.phone[-4:] }}</small>
+                            {% else %}
+                                <span class="text-muted">未设置</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if order.user.address %}
+                                <span title="{{ order.user.address.address_text }}">
+                                    {{ order.user.address.address_text[:20] }}{% if order.user.address.address_text|length > 20 %}...{% endif %}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">未设置</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong class="text-primary">¥{{ "%.2f"|format(order.amount_due) }}</strong>
+                        </td>
+                        <td>
+                            {% if order.is_paid %}
+                                <span class="badge bg-success">已付款</span>
+                            {% else %}
+                                <span class="badge bg-warning">未付款</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if order.status == 'pending' %}
+                                <span class="badge bg-warning status-badge">待支付</span>
+                            {% elif order.status == 'processing' %}
+                                <span class="badge bg-info status-badge">处理中</span>
+                            {% elif order.status == 'done' %}
+                                <span class="badge bg-success status-badge">已完成</span>
+                            {% elif order.status == 'canceled' %}
+                                <span class="badge bg-danger status-badge">已取消</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('admin_order_detail', order_no=order.order_no) }}" 
+                               class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i> 详情
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+            <h5 class="text-muted mt-3">暂无订单</h5>
+            <p class="text-muted">点击上方"创建订单"按钮开始创建订单</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

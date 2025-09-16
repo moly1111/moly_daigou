@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}我的订单 - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-list-ul text-primary"></i> 我的订单
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- 筛选按钮 -->
+                <div class="mb-3">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('orders', status='all') }}" 
+                           class="btn btn-outline-primary {{ 'active' if current_filter == 'all' else '' }}">
+                            全部
+                        </a>
+                        <a href="{{ url_for('orders', status='pending') }}" 
+                           class="btn btn-outline-warning {{ 'active' if current_filter == 'pending' else '' }}">
+                            待支付
+                        </a>
+                        <a href="{{ url_for('orders', status='processing') }}" 
+                           class="btn btn-outline-info {{ 'active' if current_filter == 'processing' else '' }}">
+                            处理中
+                        </a>
+                        <a href="{{ url_for('orders', status='done') }}" 
+                           class="btn btn-outline-success {{ 'active' if current_filter == 'done' else '' }}">
+                            已完成
+                        </a>
+                        <a href="{{ url_for('orders', status='canceled') }}" 
+                           class="btn btn-outline-danger {{ 'active' if current_filter == 'canceled' else '' }}">
+                            已取消
+                        </a>
+                    </div>
+                </div>
+
+                {% if orders %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>订单号</th>
+                                <th>创建时间</th>
+                                <th>状态</th>
+                                <th>应付金额</th>
+                                <th>付款截图</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in orders %}
+                            <tr>
+                                <td>
+                                    <code>{{ order.order_no }}</code>
+                                </td>
+                                <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    {% if order.status == 'pending' %}
+                                        <span class="badge bg-warning status-badge">待支付</span>
+                                    {% elif order.status == 'processing' %}
+                                        <span class="badge bg-info status-badge">处理中</span>
+                                    {% elif order.status == 'done' %}
+                                        <span class="badge bg-success status-badge">已完成</span>
+                                    {% elif order.status == 'canceled' %}
+                                        <span class="badge bg-danger status-badge">已取消</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong class="text-primary">¥{{ "%.2f"|format(order.amount_due) }}</strong>
+                                </td>
+                                <td>
+                                    {% if order.payment_attachments %}
+                                        <i class="bi bi-check-circle text-success"></i> 已上传
+                                    {% else %}
+                                        <i class="bi bi-x-circle text-muted"></i> 未上传
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('order_detail', order_no=order.order_no) }}" 
+                                       class="btn btn-sm btn-outline-primary me-1">
+                                        <i class="bi bi-eye"></i> 详情
+                                    </a>
+                                    {% if order.status in ['pending','processing'] %}
+                                    <form method="POST" action="{{ url_for('cancel_order', order_no=order.order_no) }}" style="display:inline" onsubmit="return confirm('确认取消该订单？')">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                                            <i class="bi bi-x-circle"></i> 取消
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                    <h5 class="text-muted mt-3">暂无订单</h5>
+                    <p class="text-muted">您还没有任何订单，请联系管理员创建订单</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

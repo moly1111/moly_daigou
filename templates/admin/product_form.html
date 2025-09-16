@@ -1,0 +1,135 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}{{ '编辑商品' if product else '添加商品' }}{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> 返回列表
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    {{ '编辑商品' if product else '添加商品' }}
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">商品名称 *</label>
+                        <input type="text" class="form-control" id="title" name="title" 
+                               value="{{ product.title if product else '' }}" 
+                               maxlength="60" required>
+                        <div class="form-text">1-60个字符</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="price_rmb" class="form-label">价格 (RMB) *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="price_rmb" name="price_rmb" 
+                                   value="{{ "%.2f"|format(product.price_rmb) if product else '' }}" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="note" class="form-label">商品备注</label>
+                        <textarea class="form-control" id="note" name="note" rows="3" 
+                                  maxlength="200">{{ product.note if product else '' }}</textarea>
+                        <div class="form-text">最多200个字符</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="status" class="form-label">状态</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="up" {{ 'selected' if product and product.status == 'up' else '' }}>上架</option>
+                            <option value="down" {{ 'selected' if product and product.status == 'down' else '' }}>下架</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="images" class="form-label">商品图片</label>
+                        <input type="file" class="form-control" id="images" name="images" 
+                               multiple accept="image/*">
+                        <div class="form-text">支持jpg、png、webp格式，单张最大5MB，最多5张</div>
+                    </div>
+
+                    {% if product and product.images %}
+                    <div class="mb-3">
+                        <label class="form-label">当前图片</label>
+                        <div class="row">
+                            {% for image_url in product.images|from_json %}
+                            <div class="col-md-3 mb-2">
+                                <img src="{{ url_for('static', filename='uploads/' + image_url) }}" 
+                                     class="img-thumbnail" style="width: 100%; height: 150px; object-fit: cover;">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> {{ '更新商品' if product else '添加商品' }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">填写说明</h6>
+            </div>
+            <div class="card-body">
+                <h6>商品名称</h6>
+                <p class="text-muted small">简洁明了地描述商品，便于用户理解</p>
+
+                <h6>价格设置</h6>
+                <p class="text-muted small">设置合理的价格，支持小数点后两位</p>
+
+                <h6>商品备注</h6>
+                <p class="text-muted small">可添加商品规格、注意事项等信息</p>
+
+                <h6>商品图片</h6>
+                <p class="text-muted small">上传清晰的商品图片，有助于用户了解商品</p>
+
+                <h6>状态管理</h6>
+                <p class="text-muted small">上架商品用户可见，下架商品仅管理员可见</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 文件上传预览和验证
+document.getElementById('images').addEventListener('change', function(e) {
+    const files = e.target.files;
+    if (files.length > 5) {
+        alert('最多只能上传5张图片');
+        e.target.value = '';
+        return;
+    }
+    
+    for (let file of files) {
+        if (file.size > 5 * 1024 * 1024) {
+            alert('单张图片大小不能超过5MB');
+            e.target.value = '';
+            return;
+        }
+    }
+});
+</script>
+{% endblock %}

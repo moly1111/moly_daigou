@@ -1,0 +1,213 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}创建订单{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('admin_orders') }}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> 返回列表
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">创建订单</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="orderForm">
+                    <div class="mb-3">
+                        <label for="user_email" class="form-label">用户邮箱 *</label>
+                        <input type="email" class="form-control" id="user_email" name="user_email" required>
+                        <div class="form-text">如果用户不存在，系统将自动创建新用户</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="amount_items" class="form-label">商品金额 (RMB) *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="amount_items" name="amount_items" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="amount_shipping" class="form-label">运费 (RMB) *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="amount_shipping" name="amount_shipping" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">订单明细 *</label>
+                        <div id="orderItems">
+                            <div class="order-item row mb-2">
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" name="item_name" placeholder="商品名称" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" name="item_spec" placeholder="规格备注">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" name="item_qty" placeholder="数量" value="1" min="1" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeItem(this)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem()">
+                            <i class="bi bi-plus"></i> 添加明细
+                        </button>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin_orders') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> 创建订单
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">商品参考</h6>
+            </div>
+            <div class="card-body">
+                {% if products %}
+                <div class="list-group">
+                    {% for product in products %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ product.title }}</h6>
+                            <small class="text-primary">¥{{ "%.2f"|format(product.price_rmb) }}</small>
+                        </div>
+                        {% if product.note %}
+                        <p class="mb-1 small text-muted">{{ product.note }}</p>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-primary" 
+                                onclick="addProductItem('{{ product.title }}', '{{ product.price_rmb }}')">
+                            <i class="bi bi-plus"></i> 添加
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">暂无商品，请先添加商品</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">填写说明</h6>
+            </div>
+            <div class="card-body">
+                <h6>用户邮箱</h6>
+                <p class="text-muted small">输入用户邮箱，如果用户不存在会自动创建</p>
+
+                <h6>金额设置</h6>
+                <p class="text-muted small">分别设置商品金额和运费，系统会自动计算总金额</p>
+
+                <h6>订单明细</h6>
+                <p class="text-muted small">添加订单包含的商品明细，可以手动输入或从商品列表添加</p>
+
+                <h6>订单号</h6>
+                <p class="text-muted small">系统会自动生成唯一的订单号</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let itemCount = 1;
+
+function addItem() {
+    const container = document.getElementById('orderItems');
+    const newItem = document.createElement('div');
+    newItem.className = 'order-item row mb-2';
+    newItem.innerHTML = `
+        <div class="col-md-4">
+            <input type="text" class="form-control" name="item_name" placeholder="商品名称" required>
+        </div>
+        <div class="col-md-3">
+            <input type="text" class="form-control" name="item_spec" placeholder="规格备注">
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control" name="item_qty" placeholder="数量" value="1" min="1" required>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeItem(this)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(newItem);
+    itemCount++;
+}
+
+function removeItem(button) {
+    if (itemCount > 1) {
+        button.closest('.order-item').remove();
+        itemCount--;
+    } else {
+        alert('至少需要保留一个订单明细');
+    }
+}
+
+function addProductItem(name, price) {
+    const container = document.getElementById('orderItems');
+    const newItem = document.createElement('div');
+    newItem.className = 'order-item row mb-2';
+    newItem.innerHTML = `
+        <div class="col-md-4">
+            <input type="text" class="form-control" name="item_name" value="${name}" required>
+        </div>
+        <div class="col-md-3">
+            <input type="text" class="form-control" name="item_spec" placeholder="规格备注">
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control" name="item_qty" placeholder="数量" value="1" min="1" required>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeItem(this)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(newItem);
+    itemCount++;
+}
+
+// 表单验证
+document.getElementById('orderForm').addEventListener('submit', function(e) {
+    const items = document.querySelectorAll('input[name="item_name"]');
+    if (items.length === 0) {
+        e.preventDefault();
+        alert('请至少添加一个订单明细');
+        return;
+    }
+    
+    for (let item of items) {
+        if (!item.value.trim()) {
+            e.preventDefault();
+            alert('请填写所有商品名称');
+            return;
+        }
+    }
+});
+</script>
+{% endblock %}

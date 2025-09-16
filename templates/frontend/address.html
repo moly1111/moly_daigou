@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}收货地址 - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-geo-alt text-primary"></i> 收货地址管理
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">
+                            <i class="bi bi-person"></i> 收货人姓名
+                        </label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ address.name if address else '' }}" 
+                               maxlength="30" required>
+                        <div class="form-text">1-30个字符</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">
+                            <i class="bi bi-telephone"></i> 手机号码
+                        </label>
+                        <input type="tel" class="form-control" id="phone" name="phone" 
+                               value="{{ address.phone if address else '' }}" 
+                               minlength="11" maxlength="20" required>
+                        <div class="form-text">11-20位数字，可包含+号</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="address_text" class="form-label">
+                            <i class="bi bi-house"></i> 详细地址
+                        </label>
+                        <textarea class="form-control" id="address_text" name="address_text" 
+                                  rows="3" maxlength="200" required>{{ address.address_text if address else '' }}</textarea>
+                        <div class="form-text">最多200个字符</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="postal_code" class="form-label">
+                            <i class="bi bi-mailbox"></i> 邮政编码
+                        </label>
+                        <input type="text" class="form-control" id="postal_code" name="postal_code" 
+                               value="{{ address.postal_code if address else '' }}" 
+                               maxlength="10">
+                        <div class="form-text">可选，最多10个字符</div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> 保存地址
+                        </button>
+                    </div>
+                </form>
+
+                {% if address %}
+                <div class="mt-4">
+                    <h6 class="text-muted">当前地址信息：</h6>
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <p class="mb-1"><strong>收货人：</strong>{{ address.name }}</p>
+                            <p class="mb-1"><strong>手机号：</strong>{{ address.phone }}</p>
+                            <p class="mb-1"><strong>地址：</strong>{{ address.address_text }}</p>
+                            {% if address.postal_code %}
+                            <p class="mb-0"><strong>邮编：</strong>{{ address.postal_code }}</p>
+                            {% endif %}
+                            <small class="text-muted">
+                                最后更新：{{ address.updated_at.strftime('%Y-%m-%d %H:%M') if address.updated_at else '未知' }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

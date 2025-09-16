@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}采购清单（预览）{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="m-0 font-weight-bold text-primary">筛选条件</h6>
+    <small class="text-muted">口径：状态=处理中 且 已付款=true</small>
+  </div>
+  <div class="card-body">
+    <form method="GET" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">起始日期</label>
+        <input type="date" name="start_date" value="{{ start_date }}" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">结束日期</label>
+        <input type="date" name="end_date" value="{{ end_date }}" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">关键词（订单号/邮箱）</label>
+        <input type="text" name="q" value="{{ keyword }}" class="form-control" placeholder="输入订单号或邮箱">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search"></i> 搜索</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="m-0 font-weight-bold text-primary">当前采购条目</h6>
+    <a class="btn btn-success" href="{{ url_for('admin_purchase_download', start_date=start_date, end_date=end_date, q=keyword) }}">
+      <i class="bi bi-download"></i> 下载 CSV
+    </a>
+  </div>
+  <div class="card-body">
+    {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm">
+        <thead>
+          <tr>
+            <th>下单时间</th>
+            <th>订单号</th>
+            <th>用户邮箱</th>
+            <th>收货人</th>
+            <th>手机号</th>
+            <th>地址</th>
+            <th>商品名称</th>
+            <th>规格备注</th>
+            <th>数量</th>
+            <th>来源</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>{{ r.created_at|cn_time }}</td>
+            <td><code>{{ r.order_no }}</code></td>
+            <td>{{ r.email }}</td>
+            <td>{{ r.receiver }}</td>
+            <td>{{ r.phone }}</td>
+            <td>{{ r.address }}</td>
+            <td>{{ r.name }}</td>
+            <td>{{ r.spec }}</td>
+            <td>{{ r.qty }}</td>
+            <td>{{ r.source }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">暂无数据，请调整筛选条件</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

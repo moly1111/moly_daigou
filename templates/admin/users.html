@@ -1,0 +1,48 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}用户管理{% endblock %}
+
+{% block page_actions %}{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+  <div class="card-header py-3">
+    <h6 class="m-0 font-weight-bold text-primary">用户列表</h6>
+  </div>
+  <div class="card-body">
+    {% if users %}
+    <div class="table-responsive">
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>邮箱</th>
+            <th>注册时间</th>
+            <th>最后登录</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.created_at|cn_time if u.created_at else '-' }}</td>
+            <td>{{ u.last_login_at|cn_time if u.last_login_at else '-' }}</td>
+            <td>
+              <a class="btn btn-sm btn-primary" href="{{ url_for('admin_user_edit', user_id=u.id) }}">编辑</a>
+              <form method="POST" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline" onsubmit="return confirm('确认删除该用户及其关联数据？')">
+                <button type="submit" class="btn btn-sm btn-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted">暂无用户</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

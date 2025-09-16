@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}用户注册 - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <h3 class="card-title">
+                        <i class="bi bi-person-plus text-primary"></i> 用户注册
+                    </h3>
+                    <p class="text-muted">创建您的账户</p>
+                </div>
+
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="email" class="form-label">
+                            <i class="bi bi-envelope"></i> 邮箱地址
+                        </label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                        <div class="form-text">请使用有效的邮箱地址</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="code" class="form-label">
+                            <i class="bi bi-shield-lock"></i> 邮箱验证码
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="code" name="code" maxlength="6" placeholder="6位验证码" required>
+                            <button class="btn btn-outline-primary" type="button" id="sendCodeBtn">发送验证码</button>
+                        </div>
+                        <div class="form-text" id="codeTip">验证码10分钟内有效</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">
+                            <i class="bi bi-lock"></i> 密码
+                        </label>
+                        <input type="password" class="form-control" id="password" name="password" 
+                               minlength="8" maxlength="32" required>
+                        <div class="form-text">密码长度8-32位，需包含字母和数字</div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-person-plus"></i> 注册
+                        </button>
+                    </div>
+                </form>
+
+                <div class="text-center mt-3">
+                    <p class="text-muted">
+                        已有账户？ 
+                        <a href="{{ url_for('login') }}" class="text-decoration-none">立即登录</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const btn = document.getElementById('sendCodeBtn');
+let cooldown = 0, timer = null;
+btn?.addEventListener('click', async () => {
+  const email = document.getElementById('email').value.trim();
+  if (!email) { alert('请先填写邮箱'); return; }
+  if (cooldown > 0) return;
+  btn.disabled = true; btn.textContent = '发送中...';
+  try {
+    const formData = new FormData();
+    formData.append('email', email);
+    const resp = await fetch('/api/auth/send-code', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (data.code === 0) {
+      cooldown = 60;
+      timer = setInterval(() => {
+        cooldown--; btn.textContent = cooldown > 0 ? `重发(${cooldown}s)` : '发送验证码';
+        btn.disabled = cooldown > 0;
+        if (cooldown <= 0) clearInterval(timer);
+      }, 1000);
+      alert('验证码已发送，请查收邮箱');
+    } else {
+      btn.disabled = false; btn.textContent = '发送验证码';
+      alert(data.message || '发送失败');
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '发送验证码';
+    alert('网络异常，稍后再试');
+  }
+});
+</script>
+{% endblock %}

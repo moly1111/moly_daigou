@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}我的购物车 - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0"><i class="bi bi-cart"></i> 我的购物车</h4>
+      <a href="{{ url_for('orders') }}" class="btn btn-primary btn-sm"><i class="bi bi-list-ul"></i> 我的订单</a>
+    </div>
+
+    {% if cart_items %}
+    <div class="table-responsive">
+      <table class="table align-middle" id="cartTable" style="table-layout: fixed;">
+        <thead>
+          <tr>
+            <th style="width:40px"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
+            <th>商品</th>
+            <th style="width:160px">数量</th>
+            <th style="width:120px">单价</th>
+            <th style="width:120px">小计</th>
+            <th style="width:120px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set total = 0 %}
+          {% for item, product in cart_items %}
+          {% set subtotal = product.price_rmb * item.qty %}
+          {% set total = total + (subtotal if product.status=='up' else 0) %}
+          <tr class="{% if product.status!='up' %}opacity-50{% endif %}" data-active="{{ 1 if product.status=='up' else 0 }}">
+            <td>
+              <input type="checkbox" name="item_id" value="{{ item.id }}" class="row-check" {% if product.status!='up' %}disabled{% endif %}>
+            </td>
+            <td>
+              <strong>{{ product.title }}</strong>
+              {% if product.note %}<br><small class="text-muted">{{ product.note }}</small>{% endif %}
+            </td>
+            <td>
+              <form method="POST" action="{{ url_for('update_cart', item_id=item.id) }}" class="d-flex align-items-center gap-2 flex-nowrap">
+                <input class="form-control form-control-sm qty-input" type="number" name="qty" value="{{ item.qty }}" min="0" style="width: 90px; min-width: 90px;" {% if product.status!='up' %}disabled{% endif %}>
+                <button class="btn btn-sm btn-outline-primary" type="submit" {% if product.status!='up' %}disabled{% endif %}>更新</button>
+              </form>
+            </td>
+            <td data-price="{{ '%.2f'|format(product.price_rmb) }}">¥{{ "%.2f"|format(product.price_rmb) }}</td>
+            <td class="row-subtotal">¥{{ "%.2f"|format(subtotal) }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('remove_cart', item_id=item.id) }}">
+                <button class="btn btn-sm btn-outline-danger" type="submit">移除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" class="text-end"><strong>选中合计：</strong></td>
+            <td colspan="2"><strong class="text-primary" id="selectedTotal">¥0.00</strong></td>
+          </tr>
+          <tr>
+            <td colspan="3" class="text-end"><small class="text-muted">全部合计：</small></td>
+            <td colspan="2"><small class="text-muted" id="allTotal">¥0.00</small></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="text-end">
+      <button id="checkoutBtn" type="button" class="btn btn-primary"><i class="bi bi-cash-coin"></i> 提交订单并去付款</button>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-cart text-muted" style="font-size:3rem"></i>
+      <p class="text-muted mt-2">购物车为空</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAll(master){
+  document.querySelectorAll('.row-check').forEach(cb=>cb.checked=master.checked);
+  recalcSelected();
+}
+
+function recalcSelected(){
+  let sum = 0;
+  let all = 0;
+  const rows = document.querySelectorAll('#cartTable tbody tr');
+  rows.forEach(row => {
+    const checked = row.querySelector('.row-check')?.checked;
+    const active = row.getAttribute('data-active') === '1';
+    const price = parseFloat(row.querySelector('[data-price]')?.getAttribute('data-price') || '0');
+    const qtyInput = row.querySelector('.qty-input');
+    const qty = parseInt(qtyInput?.value || '0');
+    if (active) {
+      all += price * qty;
+      if (checked) sum += price * qty;
+    }
+  });
+  document.getElementById('selectedTotal').textContent = '¥' + sum.toFixed(2);
+  document.getElementById('allTotal').textContent = '¥' + all.toFixed(2);
+}
+
+// 绑定事件
+document.querySelectorAll('.row-check').forEach(cb=>cb.addEventListener('change', recalcSelected));
+document.querySelectorAll('.qty-input').forEach(inp=>inp.addEventListener('input', recalcSelected));
+document.addEventListener('DOMContentLoaded', recalcSelected);
+
+// 结算收集选中项后提交
+document.getElementById('checkoutBtn')?.addEventListener('click', () => {
+  const ids = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.value);
+  if (ids.length === 0) {
+    alert('请先选择要结算的商品');
+    return;
+  }
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '{{ url_for('cart_checkout') }}';
+  ids.forEach(id => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'item_id';
+    input.value = id;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+});
+</script>
+{% endblock %}

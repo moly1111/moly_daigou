@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}订单详情 - {{ order.order_no }} - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-receipt text-primary"></i> 订单详情
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- 订单基本信息 -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6>订单信息</h6>
+                        <p class="mb-1"><strong>订单号：</strong><code>{{ order.order_no }}</code></p>
+                        <p class="mb-1"><strong>创建时间：</strong>{{ order.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                        <p class="mb-0">
+                            <strong>状态：</strong>
+                            {% if order.status == 'pending' %}
+                                <span class="badge bg-warning">待支付</span>
+                            {% elif order.status == 'processing' %}
+                                <span class="badge bg-info">处理中</span>
+                            {% elif order.status == 'done' %}
+                                <span class="badge bg-success">已完成</span>
+                            {% elif order.status == 'canceled' %}
+                                <span class="badge bg-danger">已取消</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>收货信息</h6>
+                        {% if order.user.address %}
+                        <p class="mb-1"><strong>收货人：</strong>{{ order.user.address.name }}</p>
+                        <p class="mb-1"><strong>手机号：</strong>{{ order.user.address.phone }}</p>
+                        <p class="mb-0"><strong>地址：</strong>{{ order.user.address.address_text }}</p>
+                        {% else %}
+                        <p class="text-muted">请先完善收货地址信息</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 订单明细 -->
+                <div class="mb-4">
+                    <h6>订单明细</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>商品名称</th>
+                                    <th>规格备注</th>
+                                    <th>数量</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in order.items %}
+                                <tr>
+                                    <td>{{ item.name }}</td>
+                                    <td>{{ item.spec_note or '-' }}</td>
+                                    <td>{{ item.qty }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 金额信息 -->
+                <div class="mb-4">
+                    <h6>金额明细</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between">
+                                        <span>商品金额：</span>
+                                        <span>¥{{ "%.2f"|format(order.amount_items) }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span>运费：</span>
+                                        <span>¥{{ "%.2f"|format(order.amount_shipping) }}</span>
+                                    </div>
+                                    <hr>
+                                    <div class="d-flex justify-content-between">
+                                        <strong>合计应付：</strong>
+                                        <strong class="text-primary">¥{{ "%.2f"|format(order.amount_due) }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 付款截图上传 -->
+                {% if order.status == 'pending' %}
+                <div class="mb-4">
+                    <h6>上传付款截图</h6>
+                    <form method="POST" action="{{ url_for('upload_payment_attachments', order_no=order.order_no) }}" 
+                          enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="images" class="form-label">付款截图</label>
+                            <input type="file" class="form-control" id="images" name="images" 
+                                   multiple accept="image/*" required>
+                            <div class="form-text">支持jpg、png、webp格式，单张最大5MB，最多3张</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="note" class="form-label">付款备注</label>
+                            <textarea class="form-control" id="note" name="note" rows="2" 
+                                      placeholder="建议填写订单号：{{ order.order_no }}"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> 上传截图
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- 已上传的付款截图 -->
+                {% if order.payment_attachments %}
+                <div class="mb-4">
+                    <h6>付款截图</h6>
+                    {% for attachment in order.payment_attachments %}
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    {% if attachment.user_note %}
+                                    <p class="mb-2"><strong>备注：</strong>{{ attachment.user_note }}</p>
+                                    {% endif %}
+                                    <small class="text-muted">
+                                        上传时间：{{ attachment.uploaded_at|cn_time('%Y-%m-%d %H:%M:%S') }}
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                {% for image_url in attachment.image_urls|from_json %}
+                                <div class="col-md-3 mb-2">
+                                    <img src="{{ url_for('static', filename='uploads/' + image_url) }}" 
+                                         class="img-thumbnail" style="max-height: 150px; width: 100%; object-fit: cover;">
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- 支付指引 -->
+        {% if order.status == 'pending' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-credit-card text-success"></i> 支付指引
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>付款备注请填写订单号：{{ order.order_no }}</strong>
+                </div>
+
+                {% if alipay_qr %}
+                <div class="qrcode-container mb-3">
+                    <h6 class="text-center">支付宝支付</h6>
+                    <img src="{{ url_for('static', filename='uploads/' + alipay_qr) }}" 
+                         class="img-fluid" alt="支付宝二维码">
+                </div>
+                {% endif %}
+
+                {% if wechat_qr %}
+                <div class="qrcode-container">
+                    <h6 class="text-center">微信支付</h6>
+                    <img src="{{ url_for('static', filename='uploads/' + wechat_qr) }}" 
+                         class="img-fluid" alt="微信二维码">
+                </div>
+                {% endif %}
+
+                {% if not alipay_qr and not wechat_qr %}
+                <div class="text-center text-muted">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <p>支付二维码暂未设置，请联系管理员</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 订单状态说明 -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-info-circle text-info"></i> 状态说明
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <span class="badge bg-warning me-2">待支付</span>
+                    <small>等待您完成付款并上传截图</small>
+                </div>
+                <div class="mb-2">
+                    <span class="badge bg-info me-2">处理中</span>
+                    <small>付款已确认，正在处理您的订单</small>
+                </div>
+                <div class="mb-2">
+                    <span class="badge bg-success me-2">已完成</span>
+                    <small>订单已完成，感谢您的购买</small>
+                </div>
+                <div class="mb-0">
+                    <span class="badge bg-danger me-2">已取消</span>
+                    <small>订单已取消</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 文件上传预览
+document.getElementById('images').addEventListener('change', function(e) {
+    const files = e.target.files;
+    if (files.length > 3) {
+        alert('最多只能上传3张图片');
+        e.target.value = '';
+        return;
+    }
+    
+    for (let file of files) {
+        if (file.size > 5 * 1024 * 1024) {
+            alert('单张图片大小不能超过5MB');
+            e.target.value = '';
+            return;
+        }
+    }
+});
+</script>
+{% endblock %}
