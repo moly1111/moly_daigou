@@ -473,8 +473,10 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        flash('注册成功，请登录', 'success')
-        return redirect(url_for('login'))
+        # 注册成功后自动登录
+        login_user(user, remember=True)
+        flash('注册成功，已自动登录', 'success')
+        return redirect(url_for('index'))
     
     return render_template('frontend/register.html')
 
@@ -1368,5 +1370,31 @@ if __name__ == '__main__':
             db.session.add(initial_version)
             db.session.commit()
             print("初始版本1.01已创建")
+        
+        # 创建版本1.02（如果不存在）
+        if not Version.query.filter_by(version='1.02').first():
+            version_102 = Version(
+                version='1.02',
+                title='Moly代购网站 v1.02 - 用户体验优化',
+                description='''## 用户体验优化
+- ✅ 新增密码显示/隐藏功能
+- ✅ 注册后自动登录，无需重新输入
+- ✅ 优化登录和注册流程
+
+## 功能改进
+- 🔧 登录页面添加密码可见性切换按钮
+- 🔧 注册页面添加密码可见性切换按钮
+- 🔧 注册成功后自动登录并跳转到主页
+- 🔧 提升用户注册体验
+
+## 技术更新
+- 📦 优化前端交互体验
+- 📦 改进用户流程设计
+- 📦 增强密码输入安全性''',
+                is_current=False
+            )
+            db.session.add(version_102)
+            db.session.commit()
+            print("版本1.02已创建")
     
     app.run(debug=True, host='0.0.0.0', port=5000)

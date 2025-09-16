@@ -37,8 +37,13 @@
                         <label for="password" class="form-label">
                             <i class="bi bi-lock"></i> 密码
                         </label>
-                        <input type="password" class="form-control" id="password" name="password" 
-                               minlength="8" maxlength="32" required>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   minlength="8" maxlength="32" required>
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="bi bi-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
                         <div class="form-text">密码长度8-32位，需包含字母和数字</div>
                     </div>
 
@@ -90,6 +95,21 @@ btn?.addEventListener('click', async () => {
   } catch (e) {
     btn.disabled = false; btn.textContent = '发送验证码';
     alert('网络异常，稍后再试');
+  }
+});
+
+// 密码显示/隐藏功能
+const togglePassword = document.getElementById('togglePassword');
+const passwordInput = document.getElementById('password');
+const toggleIcon = document.getElementById('toggleIcon');
+
+togglePassword.addEventListener('click', function() {
+  if (passwordInput.type === 'password') {
+    passwordInput.type = 'text';
+    toggleIcon.className = 'bi bi-eye-slash';
+  } else {
+    passwordInput.type = 'password';
+    toggleIcon.className = 'bi bi-eye';
   }
 });
 </script>
