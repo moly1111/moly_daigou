@@ -280,9 +280,26 @@ def auto_cancel_unpaid_orders():
             db.session.commit()
             print(f"自动取消了 {len(unpaid_orders)} 个未支付订单")
 
+def cleanup_expired_verification_codes():
+    """清理过期的验证码"""
+    with app.app_context():
+        try:
+            # 删除过期的验证码记录
+            expired_count = EmailVerification.query.filter(
+                EmailVerification.expire_at < datetime.utcnow()
+            ).delete()
+            
+            if expired_count > 0:
+                db.session.commit()
+                print(f"清理了 {expired_count} 个过期验证码")
+                
+        except Exception as e:
+            print(f"清理过期验证码时出错: {e}")
+
 # 启动定时任务
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=auto_cancel_unpaid_orders, trigger="interval", hours=1)
+scheduler.add_job(func=cleanup_expired_verification_codes, trigger="interval", hours=6)  # 每6小时清理一次
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -436,7 +453,9 @@ def register():
             flash('验证码无效或已过期', 'error')
             return render_template('frontend/register.html')
 
+        # 标记验证码为已使用
         ver.used = True
+        db.session.commit()
 
         user = User(
             email=email,
@@ -457,6 +476,13 @@ def send_register_code():
     if not is_valid_email(email):
         return jsonify({'code':400, 'message':'邮箱格式不正确', 'data':None}), 400
 
+    # 检查是否已注册
+    if User.query.filter_by(email=email).first():
+        return jsonify({'code':400, 'message':'该邮箱已被注册', 'data':None}), 400
+
+    # 标记该邮箱的所有旧验证码为已使用
+    EmailVerification.query.filter_by(email=email, used=False).update({'used': True})
+    
     # 生成6位验证码，10分钟有效
     code = ''.join(random.choices(string.digits, k=6))
     expire_at = datetime.utcnow() + timedelta(minutes=10)
