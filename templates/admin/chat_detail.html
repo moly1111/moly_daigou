@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+
+{% block title %}与 {{ user.email }} 的聊天{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">与 {{ user.email }} 的聊天</h5>
+  <a href="{{ url_for('admin_chats') }}" class="btn btn-outline-secondary btn-sm">返回</a>
+</div>
+
+<div id="chatScroll" class="border rounded p-3 mb-3 chat-box" style="height: 60vh; overflow-y: auto;">
+  {% for m in messages %}
+  <div class="mb-3 chat-item" data-id="{{ m.id }}">
+    <div class="small text-muted">{{ m.sender == 'admin' and '我(管理员)' or '用户' }} · {{ m.created_at|cn_time('%Y-%m-%d %H:%M:%S') }}</div>
+    {% if m.text %}
+    <div class="p-2 rounded" style="background: var(--bs-secondary-bg);">{{ m.text }}</div>
+    {% endif %}
+    {% if m.image_path %}
+    <div class="mt-2">
+      <img src="{{ m.image_path }}" alt="chat-image" style="max-width: 240px; cursor: zoom-in;" />
+    </div>
+    {% endif %}
+    {% if m.file_path %}
+    <div class="mt-2">
+      <a href="{{ m.file_path }}" download="{{ m.file_name or 'download' }}" target="_blank">
+        <i class="bi bi-paperclip"></i> {{ m.file_name or '下载文件' }}
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<form method="POST" enctype="multipart/form-data" class="d-flex gap-2 chat-send-bar">
+  <input type="text" name="text" class="form-control" placeholder="输入回复...">
+  <button id="imgBtn" class="btn btn-outline-secondary" type="button" title="发送图片"><i class="bi bi-image"></i></button>
+  <input id="msgImage" type="file" name="image" accept="image/*" class="d-none">
+  <input type="file" name="file" class="form-control" style="max-width: 260px;">
+  <button class="btn btn-primary" type="submit">发送</button>
+  </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 在聊天页面：关闭全局未读弹窗
+window.__suppressGlobalChatAlert = true;
+
+function scrollToBottom(){
+  const c = document.getElementById('chatScroll');
+  if(c){ c.scrollTop = c.scrollHeight; }
+}
+// 初次渲染后尝试多次滚动，确保定位到底部
+scrollToBottom();
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(scrollToBottom, 0);
+  setTimeout(scrollToBottom, 150);
+});
+window.addEventListener('load', () => {
+  scrollToBottom();
+});
+document.getElementById('chatScroll')?.addEventListener('load', (e) => {
+  if(e.target && e.target.tagName === 'IMG') scrollToBottom();
+}, true);
+
+let lastId = (function(){
+  const items = document.querySelectorAll('.chat-item');
+  return items.length ? parseInt(items[items.length-1].getAttribute('data-id')) : 0;
+})();
+
+async function fetchNew(){
+  try{
+    const url = new URL('{{ url_for('api_chat_messages_admin', user_id=user.id) }}', window.location.origin);
+    if(lastId){ url.searchParams.set('since_id', String(lastId)); }
+    const res = await fetch(url, { credentials:'same-origin' });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(Array.isArray(data) && data.length){
+      const container = document.getElementById('chatScroll');
+      data.forEach(m => {
+        const wrap = document.createElement('div');
+        wrap.className = 'mb-3 chat-item';
+        wrap.setAttribute('data-id', String(m.id));
+        const who = m.sender==='admin' ? '我(管理员)' : '用户';
+        const time = new Date(m.created_at).toLocaleString('zh-CN', { hour12:false });
+        wrap.innerHTML = `
+          <div class=\"small text-muted\">${who} · ${time}</div>
+          ${m.text ? `<div class=\"p-2 rounded\" style=\"background: var(--bs-secondary-bg);\">${m.text}</div>` : ''}
+          ${m.image_path ? `<div class=\"mt-2\"><img src=\"${m.image_path}\" style=\"max-width:240px;cursor:zoom-in;\"/></div>` : ''}
+          ${m.file_path ? `<div class=\"mt-2\"><a href=\"${m.file_path}\" download=\"${m.file_name || ''}\" target=\"_blank\"><i class=\"bi bi-paperclip\"></i> ${m.file_name || '下载文件'}</a></div>` : ''}
+        `;
+        container.appendChild(wrap);
+        lastId = m.id;
+      });
+      scrollToBottom();
+    }
+  }catch(e){}
+}
+setInterval(fetchNew, 3000);
+
+// 图片按钮触发
+document.getElementById('imgBtn')?.addEventListener('click', ()=>{
+  document.getElementById('msgImage')?.click();
+});
+</script>
+{% endblock %}
+
+

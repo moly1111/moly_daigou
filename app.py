@@ -33,6 +33,7 @@ os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'products'), exist_ok=True
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'payments'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'qrcodes'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'covers'), exist_ok=True)
+os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'chat'), exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -151,6 +152,256 @@ class Version(db.Model):
     release_date = db.Column(db.DateTime, default=datetime.utcnow)
     is_current = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# 聊天消息
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    sender = db.Column(db.String(10), nullable=False)  # 'user' or 'admin'
+    text = db.Column(db.Text)
+    image_path = db.Column(db.String(512))
+    file_path = db.Column(db.String(512))
+    file_name = db.Column(db.String(255))
+    file_mime = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    is_read_by_user = db.Column(db.Boolean, default=False)
+    is_read_by_admin = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref=db.backref('chat_messages', lazy='dynamic'))
+
+# =========================
+# 聊天相关路由与API
+# =========================
+def _save_chat_image(file_storage):
+    if not file_storage or file_storage.filename == '':
+        return None
+    filename = secure_filename(file_storage.filename)
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    rnd = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    final_name = f"{ts}_{rnd}.{ext}"
+    save_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'chat')
+    os.makedirs(save_dir, exist_ok=True)
+    path = os.path.join(save_dir, final_name)
+    file_storage.save(path)
+    return f"/static/uploads/chat/{final_name}"
+
+def _save_chat_file(file_storage):
+    if not file_storage or file_storage.filename == '':
+        return None, None, None
+    filename = secure_filename(file_storage.filename)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    rnd = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    # 若无扩展名，则基于 mimetype 追加常见扩展名
+    mime = file_storage.mimetype or ''
+    has_ext = ('.' in filename and not filename.endswith('.'))
+    if not has_ext:
+        ext_map = {
+            'application/pdf': 'pdf',
+            'text/plain': 'txt',
+            'text/csv': 'csv',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+            'application/msword': 'doc',
+            'application/vnd.ms-excel': 'xls',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+        }
+        guessed = ext_map.get(mime, None)
+        if guessed:
+            filename = f"{filename}.{guessed}"
+    final_name = f"{ts}_{rnd}_{filename}"
+    save_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'chat')
+    os.makedirs(save_dir, exist_ok=True)
+    path = os.path.join(save_dir, final_name)
+    file_storage.save(path)
+    # 返回URL、原始文件名、mime
+    mime = file_storage.mimetype
+    return f"/static/uploads/chat/{final_name}", filename, mime
+
+@app.route('/chat', methods=['GET', 'POST'])
+@login_required
+def chat_page():
+    # 仅普通用户可访问
+    if isinstance(current_user, AdminUser):
+        return redirect(url_for('admin_chats'))
+    if request.method == 'POST':
+        text = request.form.get('text', '').strip()
+        image = request.files.get('image')
+        file_any = request.files.get('file')
+        image_path = _save_chat_image(image) if image else None
+        file_url, file_name, file_mime = _save_chat_file(file_any) if file_any else (None, None, None)
+        if not text and not image_path and not file_url:
+            flash('请输入消息或选择图片', 'warning')
+        else:
+            msg = ChatMessage(user_id=current_user.id, sender='user', text=text or None, image_path=image_path, file_path=file_url, file_name=file_name, file_mime=file_mime)
+            db.session.add(msg)
+            db.session.commit()
+        return redirect(url_for('chat_page'))
+    # 拉取最近100条
+    messages = ChatMessage.query.filter_by(user_id=current_user.id).order_by(ChatMessage.created_at.asc()).limit(100).all()
+    # 将发给用户且未读的标记为已读
+    ChatMessage.query.filter_by(user_id=current_user.id, sender='admin', is_read_by_user=False).update({ChatMessage.is_read_by_user: True})
+    db.session.commit()
+    return render_template('frontend/chat.html', messages=messages)
+
+@app.post('/api/chat/send')
+@login_required
+def api_chat_send_user():
+    if isinstance(current_user, AdminUser):
+        return jsonify({'error': 'forbidden'}), 403
+    text = request.form.get('text', '').strip()
+    image = request.files.get('image')
+    file_any = request.files.get('file')
+    image_path = _save_chat_image(image) if image else None
+    file_url, file_name, file_mime = _save_chat_file(file_any) if file_any else (None, None, None)
+    if not text and not image_path and not file_url:
+        return jsonify({'error': 'empty'}), 400
+    msg = ChatMessage(user_id=current_user.id, sender='user', text=text or None, image_path=image_path, file_path=file_url, file_name=file_name, file_mime=file_mime)
+    db.session.add(msg)
+    db.session.commit()
+    return jsonify({
+        'id': msg.id,
+        'sender': msg.sender,
+        'text': msg.text,
+        'image_path': msg.image_path,
+        'created_at': msg.created_at.isoformat(),
+        'file_path': msg.file_path,
+        'file_name': msg.file_name,
+        'file_mime': msg.file_mime
+    })
+
+@app.get('/api/chat/messages')
+@login_required
+def api_chat_messages_user():
+    # 用户端拉取自己的消息，支持基于 since_id 增量获取
+    if isinstance(current_user, AdminUser):
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        since_id = request.args.get('since_id', type=int)
+        q = ChatMessage.query.filter_by(user_id=current_user.id).order_by(ChatMessage.id.asc())
+        if since_id:
+            q = q.filter(ChatMessage.id > since_id)
+        msgs = q.all()
+        # 将管理员发给用户的未读标记为已读
+        ChatMessage.query.filter_by(user_id=current_user.id, sender='admin', is_read_by_user=False).update({ChatMessage.is_read_by_user: True})
+        db.session.commit()
+        return jsonify([
+            {
+                'id': m.id,
+                'sender': m.sender,
+                'text': m.text,
+                'image_path': m.image_path,
+                'file_path': m.file_path,
+                'file_name': m.file_name,
+                'file_mime': m.file_mime,
+                'created_at': m.created_at.isoformat()
+            } for m in msgs
+        ])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/chats')
+@login_required
+def admin_chats():
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('login'))
+    # 汇总每个用户的最后一条消息与未读数
+    users = User.query.all()
+    data = []
+    for u in users:
+        last_msg = ChatMessage.query.filter_by(user_id=u.id).order_by(ChatMessage.created_at.desc()).first()
+        unread = ChatMessage.query.filter_by(user_id=u.id, sender='user', is_read_by_admin=False).count()
+        if last_msg or unread:
+            data.append({'user': u, 'last_msg': last_msg, 'unread': unread})
+    # 最近活跃优先
+    data.sort(key=lambda x: (x['last_msg'].created_at if x['last_msg'] else datetime.min), reverse=True)
+    return render_template('admin/chats.html', items=data)
+
+@app.route('/admin/chats/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def admin_chat_detail(user_id: int):
+    if not isinstance(current_user, AdminUser):
+        return redirect(url_for('login'))
+    user = User.query.get_or_404(user_id)
+    if request.method == 'POST':
+        text = request.form.get('text', '').strip()
+        image = request.files.get('image')
+        image_path = _save_chat_image(image) if image else None
+        if not text and not image_path:
+            flash('请输入消息或选择图片', 'warning')
+        else:
+            msg = ChatMessage(user_id=user.id, sender='admin', text=text or None, image_path=image_path)
+            db.session.add(msg)
+            db.session.commit()
+        return redirect(url_for('admin_chat_detail', user_id=user.id))
+    messages = ChatMessage.query.filter_by(user_id=user.id).order_by(ChatMessage.created_at.asc()).all()
+    # 用户消息标记为已读
+    ChatMessage.query.filter_by(user_id=user.id, sender='user', is_read_by_admin=False).update({ChatMessage.is_read_by_admin: True})
+    db.session.commit()
+    return render_template('admin/chat_detail.html', user=user, messages=messages)
+
+@app.post('/api/admin/chats/<int:user_id>/send')
+@login_required
+def api_chat_send_admin(user_id: int):
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': 'forbidden'}), 403
+    user = User.query.get_or_404(user_id)
+    text = request.form.get('text', '').strip()
+    image = request.files.get('image')
+    file_any = request.files.get('file')
+    image_path = _save_chat_image(image) if image else None
+    file_url, file_name, file_mime = _save_chat_file(file_any) if file_any else (None, None, None)
+    if not text and not image_path and not file_url:
+        return jsonify({'error': 'empty'}), 400
+    msg = ChatMessage(user_id=user.id, sender='admin', text=text or None, image_path=image_path, file_path=file_url, file_name=file_name, file_mime=file_mime)
+    db.session.add(msg)
+    db.session.commit()
+    return jsonify({
+        'id': msg.id,
+        'sender': msg.sender,
+        'text': msg.text,
+        'image_path': msg.image_path,
+        'created_at': msg.created_at.isoformat(),
+        'file_path': msg.file_path,
+        'file_name': msg.file_name,
+        'file_mime': msg.file_mime
+    })
+
+@app.get('/api/admin/chats/<int:user_id>/messages')
+@login_required
+def api_chat_messages_admin(user_id: int):
+    if not isinstance(current_user, AdminUser):
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        since_id = request.args.get('since_id', type=int)
+        q = ChatMessage.query.filter_by(user_id=user_id).order_by(ChatMessage.id.asc())
+        if since_id:
+            q = q.filter(ChatMessage.id > since_id)
+        msgs = q.all()
+        # 将用户发给管理员的未读标记为已读
+        ChatMessage.query.filter_by(user_id=user_id, sender='user', is_read_by_admin=False).update({ChatMessage.is_read_by_admin: True})
+        db.session.commit()
+        return jsonify([
+            {
+                'id': m.id,
+                'sender': m.sender,
+                'text': m.text,
+                'image_path': m.image_path,
+                'created_at': m.created_at.isoformat()
+            } for m in msgs
+        ])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.get('/api/chat/unread')
+@login_required
+def api_chat_unread():
+    if isinstance(current_user, AdminUser):
+        # 管理员端：统计所有未读的用户消息数量
+        count = ChatMessage.query.filter_by(sender='user', is_read_by_admin=False).count()
+        return jsonify({ 'role': 'admin', 'unread': count })
+    # 用户端：统计发给该用户的管理员未读
+    count = ChatMessage.query.filter_by(user_id=current_user.id, sender='admin', is_read_by_user=False).count()
+    return jsonify({ 'role': 'user', 'unread': count })
 
 @login_manager.user_loader
 def load_user(user_id: str):

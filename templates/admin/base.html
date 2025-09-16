@@ -52,6 +52,12 @@
             max-width: 200px;
             height: auto;
         }
+        /* 聊天发送栏与容器样式（管理员端不区分明暗主题） */
+        .chat-send-bar { position: sticky; bottom: 0; background: #f8f9fa; padding-bottom: .25rem; z-index: 2; }
+        .chat-send-bar .form-control { height: 46px; }
+        .chat-send-bar .btn { height: 46px; min-width: 72px; }
+        .chat-send-bar .form-control[type=file] { padding-top: .5rem; padding-bottom: .5rem; }
+        .chat-box { background-color:#ffffff; border-color: rgba(0,0,0,.125); }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -107,6 +113,12 @@
                             <a class="nav-link {% if request.endpoint in ['admin_versions', 'admin_new_version'] %}active{% endif %}" 
                                href="{{ url_for('admin_versions') }}">
                                 <i class="bi bi-tags"></i> 版本管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint in ['admin_chats','admin_chat_detail'] %}active{% endif %}" 
+                               href="{{ url_for('admin_chats') }}">
+                                <i class="bi bi-chat-dots"></i> 用户消息
                             </a>
                         </li>
                     </ul>
@@ -258,6 +270,22 @@
             subtree: true
         });
     });
+    </script>
+    <script>
+    // 管理员端全站未读消息轮询提醒，在聊天页面内抑制弹窗
+    setInterval(async () => {
+        try {
+            const res = await fetch('{{ url_for('api_chat_unread') }}', { credentials: 'same-origin' });
+            if(!res.ok) return;
+            const data = await res.json();
+            if (data.role === 'admin' && data.unread > 0 && !window.__suppressGlobalChatAlert) {
+                if (!window.__globalUnread || window.__globalUnread !== data.unread) {
+                    window.__globalUnread = data.unread;
+                    alert('有新的用户消息');
+                }
+            }
+        } catch (e) {}
+    }, 12000);
     </script>
     {% block extra_js %}{% endblock %}
 </body>

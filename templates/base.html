@@ -58,6 +58,23 @@
         /* 切换主题按钮在暗色下的样式 */
         .theme-dark #themeToggle { background-color:#2a2a2a; color:#e2e2e2; border-color:#555; }
         .theme-dark #themeToggle:hover { background-color:#3a3a3a; }
+
+        /* 聊天发送栏样式 */
+        .chat-send-bar { position: sticky; bottom: 0; background: var(--bs-body-bg); padding-bottom: .25rem; z-index: 2; }
+        .chat-send-bar .form-control { height: 46px; }
+        .chat-send-bar .btn { height: 46px; min-width: 72px; }
+        .chat-send-bar .form-control[type=file] { padding-top: .5rem; padding-bottom: .5rem; }
+
+        /* 暗色主题下文件选择按钮与输入框可见性修复 */
+        .theme-dark input[type=file] { color:#e2e2e2; background-color:#1c1c1c; border-color:#3a3a3a; }
+        .theme-dark input[type=file]::file-selector-button { background-color:#2a2a2a; color:#e2e2e2; border:1px solid #555; }
+        .theme-dark input[type=file]::-webkit-file-upload-button { background-color:#2a2a2a; color:#e2e2e2; border:1px solid #555; }
+        .theme-dark .btn-primary { background-color:#3a6fb0; border-color:#3a6fb0; }
+        /* 聊天框暗色背景与边框 */
+        .chat-box { background-color: var(--bs-body-bg); border-color: rgba(0,0,0,.125); }
+        .theme-dark .chat-box { background-color:#111; border-color:#333; }
+        .theme-dark .chat-send-bar { background-color:#111; }
+        .theme-dark .chat-send-bar .form-control { background-color:#1c1c1c; border-color:#3a3a3a; color:#e2e2e2; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -86,6 +103,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('cart_page') }}">
                                 <i class="bi bi-cart"></i> 购物车
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('chat_page') }}">
+                                <i class="bi bi-chat-dots"></i> 聊天
                             </a>
                         </li>
                     {% endif %}
@@ -169,6 +191,22 @@
             applyTheme(next);
         });
     })();
+    </script>
+    <script>
+    // 全站未读消息轮询提醒（用户端），在聊天页面内抑制弹窗
+    setInterval(async () => {
+        try {
+            const res = await fetch('{{ url_for('api_chat_unread') }}', { credentials: 'same-origin' });
+            if(!res.ok) return;
+            const data = await res.json();
+            if (data.role === 'user' && data.unread > 0 && !window.__suppressGlobalChatAlert) {
+                if (!window.__globalUnread || window.__globalUnread !== data.unread) {
+                    window.__globalUnread = data.unread;
+                    alert('您有新的管理员消息');
+                }
+            }
+        } catch (e) {}
+    }, 12000);
     </script>
     <script>
     (function updateClock(){

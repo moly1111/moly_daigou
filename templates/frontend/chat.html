@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}与管理员聊天{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12 col-md-8 mx-auto">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0"><i class="bi bi-chat-dots"></i> 与管理员聊天</h5>
+      <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">返回</a>
+    </div>
+
+    <div id="chatScroll" class="border rounded p-3 mb-3 chat-box" style="height: 60vh; overflow-y: auto;">
+      {% for m in messages %}
+      <div class="mb-3 chat-item" data-id="{{ m.id }}">
+        <div class="small text-muted">{{ '我' if m.sender=='user' else '管理员' }} · {{ m.created_at|cn_time('%Y-%m-%d %H:%M:%S') }}</div>
+        {% if m.text %}
+        <div class="p-2 rounded" style="background: var(--bs-secondary-bg);">{{ m.text }}</div>
+        {% endif %}
+        {% if m.image_path %}
+        <div class="mt-2">
+          <img src="{{ m.image_path }}" alt="chat-image" style="max-width: 240px; cursor: zoom-in;" />
+        </div>
+        {% endif %}
+        {% if m.file_path %}
+        <div class="mt-2">
+          <a href="{{ m.file_path }}" download="{{ m.file_name or 'download' }}" target="_blank">
+            <i class="bi bi-paperclip"></i> {{ m.file_name or '下载文件' }}
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <form id="chatForm" method="POST" enctype="multipart/form-data" class="d-flex gap-2 chat-send-bar">
+      <input id="msgText" type="text" name="text" class="form-control" placeholder="输入消息...">
+      <button id="imgBtn" class="btn btn-outline-secondary" type="button" title="发送图片"><i class="bi bi-image"></i></button>
+      <input id="msgImage" type="file" name="image" accept="image/*" class="d-none">
+      <input id="msgFile" type="file" name="file" class="form-control" style="max-width: 260px;">
+      <button class="btn btn-primary" type="submit">发送</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 在聊天页面：关闭全局未读弹窗
+window.__suppressGlobalChatAlert = true;
+
+function scrollToBottom(){
+  const c = document.getElementById('chatScroll');
+  if(c){ c.scrollTop = c.scrollHeight; }
+}
+// 初次渲染后尝试多次滚动，确保定位到底部
+scrollToBottom();
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(scrollToBottom, 0);
+  setTimeout(scrollToBottom, 150);
+});
+window.addEventListener('load', () => {
+  scrollToBottom();
+});
+// 图片加载后再滚动一次
+document.getElementById('chatScroll')?.addEventListener('load', (e) => {
+  if(e.target && e.target.tagName === 'IMG') scrollToBottom();
+}, true);
+
+let lastId = (function(){
+  const items = document.querySelectorAll('.chat-item');
+  return items.length ? parseInt(items[items.length-1].getAttribute('data-id')) : 0;
+})();
+
+async function fetchNew(){
+  try{
+    const url = new URL('{{ url_for('api_chat_messages_user') }}', window.location.origin);
+    if(lastId){ url.searchParams.set('since_id', String(lastId)); }
+    const res = await fetch(url, { credentials:'same-origin' });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(Array.isArray(data) && data.length){
+      const container = document.getElementById('chatScroll');
+      data.forEach(m => {
+        const wrap = document.createElement('div');
+        wrap.className = 'mb-3 chat-item';
+        wrap.setAttribute('data-id', String(m.id));
+        const who = m.sender==='user' ? '我' : '管理员';
+        const time = new Date(m.created_at).toLocaleString('zh-CN', { hour12:false });
+        wrap.innerHTML = `
+          <div class=\"small text-muted\">${who} · ${time}</div>
+          ${m.text ? `<div class=\"p-2 rounded\" style=\"background: var(--bs-secondary-bg);\">${m.text}</div>` : ''}
+          ${m.image_path ? `<div class=\"mt-2\"><img src=\"${m.image_path}\" style=\"max-width:240px;cursor:zoom-in;\"/></div>` : ''}
+          ${m.file_path ? `<div class=\"mt-2\"><a href=\"${m.file_path}\" download=\"${m.file_name || 'download'}\" target=\"_blank\"><i class=\"bi bi-paperclip\"></i> ${m.file_name || '下载文件'}</a></div>` : ''}
+        `;
+        container.appendChild(wrap);
+        lastId = m.id;
+      });
+      scrollToBottom();
+    }
+  }catch(e){}
+}
+setInterval(fetchNew, 3000);
+
+// AJAX 发送后追加并滚到底
+document.getElementById('chatForm')?.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  try{
+    const form = new FormData();
+    const t = document.getElementById('msgText');
+    const f = document.getElementById('msgImage');
+    const g = document.getElementById('msgFile');
+    const text = t.value.trim();
+    if(text){ form.append('text', text); }
+    if(f.files && f.files[0]){ form.append('image', f.files[0]); }
+    if(g.files && g.files[0]){ form.append('file', g.files[0]); }
+    if(!text && !(f.files && f.files[0]) && !(g.files && g.files[0])) return;
+    const res = await fetch('{{ url_for('api_chat_send_user') }}', { method:'POST', body: form, credentials:'same-origin' });
+    if(!res.ok) return;
+    const m = await res.json();
+    const container = document.getElementById('chatScroll');
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-3 chat-item';
+    wrap.setAttribute('data-id', String(m.id));
+    const time = new Date(m.created_at).toLocaleString('zh-CN', { hour12:false });
+    wrap.innerHTML = `
+      <div class=\"small text-muted\">我 · ${time}</div>
+      ${m.text ? `<div class=\"p-2 rounded\" style=\"background: var(--bs-secondary-bg);\">${m.text}</div>` : ''}
+      ${m.image_path ? `<div class=\"mt-2\"><img src=\"${m.image_path}\" style=\"max-width:240px;cursor:zoom-in;\"/></div>` : ''}
+    `;
+    container.appendChild(wrap);
+    lastId = m.id;
+    t.value=''; if(f) f.value=''; if(g) g.value='';
+    scrollToBottom();
+  }catch(err){}
+});
+
+// 图片按钮触发隐藏的选择框
+document.getElementById('imgBtn')?.addEventListener('click', ()=>{
+  document.getElementById('msgImage')?.click();
+});
+</script>
+{% endblock %}
+
+

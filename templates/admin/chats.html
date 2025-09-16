@@ -1,0 +1,52 @@
+{% extends "admin/base.html" %}
+
+{% block title %}用户消息{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-inbox"></i> 用户消息</h5>
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">返回</a>
+  </div>
+
+<div class="list-group">
+  {% for it in items %}
+  <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('admin_chat_detail', user_id=it.user.id) }}">
+    <div>
+      <div class="fw-bold">{{ it.user.email }}</div>
+      <div class="small text-muted">
+        {% if it.last_msg %}
+          {{ it.last_msg.sender == 'user' and '用户' or '管理员' }}: 
+          {% if it.last_msg.text %}{{ it.last_msg.text|truncate(30) }}{% elif it.last_msg.image_path %}[图片]{% endif %}
+          · {{ it.last_msg.created_at|cn_time('%Y-%m-%d %H:%M:%S') }}
+        {% else %}
+          暂无消息
+        {% endif %}
+      </div>
+    </div>
+    {% if it.unread > 0 %}
+    <span class="badge bg-danger rounded-pill">{{ it.unread }}</span>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 管理员未读轮询提醒
+setInterval(async () => {
+  try {
+    const res = await fetch('{{ url_for('api_chat_unread') }}', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.role === 'admin' && data.unread > 0) {
+      if (!window.__lastUnread || window.__lastUnread !== data.unread) {
+        window.__lastUnread = data.unread;
+        alert('有新的用户消息');
+      }
+    }
+  } catch (e) {}
+}, 10000);
+</script>
+{% endblock %}
+
+
