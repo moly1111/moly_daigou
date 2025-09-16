@@ -17,6 +17,7 @@
           <tr>
             <th>ID</th>
             <th>邮箱</th>
+            <th>状态</th>
             <th>注册时间</th>
             <th>最后登录</th>
             <th>操作</th>
@@ -24,16 +25,38 @@
         </thead>
         <tbody>
           {% for u in users %}
-          <tr>
+          <tr {% if u.is_banned %}class="table-danger"{% endif %}>
             <td>{{ u.id }}</td>
             <td>{{ u.email }}</td>
+            <td>
+              {% if u.is_banned %}
+                <span class="badge bg-danger">已封禁</span>
+              {% else %}
+                <span class="badge bg-success">正常</span>
+              {% endif %}
+            </td>
             <td>{{ u.created_at|cn_time if u.created_at else '-' }}</td>
             <td>{{ u.last_login_at|cn_time if u.last_login_at else '-' }}</td>
             <td>
-              <a class="btn btn-sm btn-primary" href="{{ url_for('admin_user_edit', user_id=u.id) }}">编辑</a>
-              <form method="POST" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline" onsubmit="return confirm('确认删除该用户及其关联数据？')">
-                <button type="submit" class="btn btn-sm btn-danger">删除</button>
-              </form>
+              <div class="btn-group" role="group">
+                <a class="btn btn-sm btn-primary" href="{{ url_for('admin_user_edit', user_id=u.id) }}">
+                  <i class="bi bi-pencil"></i> 编辑
+                </a>
+                {% if u.is_banned %}
+                  <a class="btn btn-sm btn-success" href="{{ url_for('admin_user_unban', user_id=u.id) }}" 
+                     onclick="return confirm('确认解封该用户？')">
+                    <i class="bi bi-unlock"></i> 解封
+                  </a>
+                {% else %}
+                  <a class="btn btn-sm btn-warning" href="{{ url_for('admin_user_ban', user_id=u.id) }}" 
+                     onclick="return confirm('确认封禁该用户？')">
+                    <i class="bi bi-lock"></i> 封禁
+                  </a>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ u.id }}">
+                  <i class="bi bi-trash"></i> 删除
+                </button>
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -45,4 +68,40 @@
     {% endif %}
   </div>
 </div>
+
+<!-- 删除确认模态框 -->
+{% for u in users %}
+<div class="modal fade" id="deleteModal{{ u.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">确认删除用户</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>您确定要删除用户 <strong>{{ u.email }}</strong> 吗？</p>
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>警告：</strong>此操作将永久删除该用户及其所有关联数据，包括：
+          <ul class="mb-0 mt-2">
+            <li>用户账户信息</li>
+            <li>收货地址</li>
+            <li>所有订单记录</li>
+            <li>付款截图</li>
+          </ul>
+        </div>
+        <p class="text-danger"><strong>此操作不可撤销！</strong></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <form method="POST" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline">
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash"></i> 确认删除
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
 {% endblock %}

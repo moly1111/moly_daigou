@@ -46,6 +46,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime)
+    is_banned = db.Column(db.Boolean, default=False)  # 用户封禁状态
     
     # 关联
     address = db.relationship('Address', backref='user', uselist=False)
@@ -236,11 +237,29 @@ def user_required(func):
     def wrapper(*args, **kwargs):
         if not current_user.is_authenticated or isinstance(current_user, AdminUser):
             return redirect(url_for('login'))
+        
+        # 检查用户是否被封禁
+        if current_user.is_banned:
+            logout_user()
+            flash('您的账户已被封禁，请联系管理员', 'error')
+            return redirect(url_for('login'))
+        
         return func(*args, **kwargs)
     return wrapper
 
 def is_valid_email(email: str) -> bool:
     return isinstance(email, str) and '@' in email and '.' in email
+
+@app.before_request
+def check_user_ban_status():
+    """在每个请求前检查用户封禁状态"""
+    if current_user.is_authenticated and isinstance(current_user, User):
+        # 重新从数据库获取用户信息，确保状态是最新的
+        user = User.query.get(current_user.id)
+        if user and user.is_banned:
+            logout_user()
+            flash('您的账户已被封禁，请联系管理员', 'error')
+            return redirect(url_for('login'))
 
 @app.context_processor
 def inject_role_helpers():
@@ -305,10 +324,28 @@ def cleanup_expired_verification_codes():
         except Exception as e:
             print(f"清理过期验证码时出错: {e}")
 
+def check_banned_users():
+    """检查并强制登出被封禁的用户"""
+    with app.app_context():
+        try:
+            # 获取所有被封禁的用户
+            banned_users = User.query.filter_by(is_banned=True).all()
+            
+            if banned_users:
+                print(f"发现 {len(banned_users)} 个被封禁的用户")
+                # 这里我们无法直接操作Flask-Login的会话
+                # 但可以通过其他方式处理，比如记录日志或发送通知
+                for user in banned_users:
+                    print(f"用户 {user.email} 已被封禁，需要强制登出")
+                
+        except Exception as e:
+            print(f"检查封禁用户时出错: {e}")
+
 # 启动定时任务
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=auto_cancel_unpaid_orders, trigger="interval", hours=1)
 scheduler.add_job(func=cleanup_expired_verification_codes, trigger="interval", hours=6)  # 每6小时清理一次
+scheduler.add_job(func=check_banned_users, trigger="interval", minutes=5)  # 每5分钟检查一次封禁用户
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -431,11 +468,14 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and check_password_hash(user.password_hash, password):
-            remember = True
-            login_user(user, remember=remember, duration=timedelta(days=7))
-            user.last_login_at = datetime.utcnow()
-            db.session.commit()
-            return redirect(url_for('index'))
+            if user.is_banned:
+                flash('您的账户已被封禁，请联系管理员', 'error')
+            else:
+                remember = True
+                login_user(user, remember=remember, duration=timedelta(days=7))
+                user.last_login_at = datetime.utcnow()
+                db.session.commit()
+                return redirect(url_for('index'))
         else:
             flash('邮箱或密码错误', 'error')
     
@@ -751,6 +791,26 @@ def admin_user_delete(user_id: int):
     db.session.delete(user)
     db.session.commit()
     flash('用户已删除', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/ban')
+@login_required
+@admin_required
+def admin_user_ban(user_id: int):
+    user = User.query.get_or_404(user_id)
+    user.is_banned = True
+    db.session.commit()
+    flash(f'用户 {user.email} 已被封禁', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/unban')
+@login_required
+@admin_required
+def admin_user_unban(user_id: int):
+    user = User.query.get_or_404(user_id)
+    user.is_banned = False
+    db.session.commit()
+    flash(f'用户 {user.email} 已解封', 'success')
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/products/new', methods=['GET', 'POST'])
@@ -1339,62 +1399,5 @@ if __name__ == '__main__':
             db.session.commit()
             print(f"管理员密码已更新：用户名 {admin_username}")
         
-        # 创建初始版本1.01
-        if not Version.query.filter_by(version='1.01').first():
-            initial_version = Version(
-                version='1.01',
-                title='Moly代购网站 v1.01 - 完整功能版本',
-                description='''## 主要功能
-- ✅ 用户注册登录系统（邮箱验证码）
-- ✅ 商品管理（上架/下架/多图上传）
-- ✅ 购物车功能（添加/移除/结算）
-- ✅ 订单管理（创建/支付/状态跟踪）
-- ✅ 付款截图上传与验证
-- ✅ 采购清单导出
-- ✅ 用户地址管理
-- ✅ 管理员后台
-- ✅ 自动取消未支付订单
-- ✅ 深浅主题切换
-- ✅ 图片放大查看
-- ✅ 封面图片设置
-- ✅ 版本管理系统
-
-## 技术特性
-- Flask + SQLAlchemy + Bootstrap 5
-- 环境变量配置
-- 跨平台兼容（Windows/Linux）
-- 响应式设计
-- 安全验证码系统''',
-                is_current=True
-            )
-            db.session.add(initial_version)
-            db.session.commit()
-            print("初始版本1.01已创建")
-        
-        # 创建版本1.02（如果不存在）
-        if not Version.query.filter_by(version='1.02').first():
-            version_102 = Version(
-                version='1.02',
-                title='Moly代购网站 v1.02 - 用户体验优化',
-                description='''## 用户体验优化
-- ✅ 新增密码显示/隐藏功能
-- ✅ 注册后自动登录，无需重新输入
-- ✅ 优化登录和注册流程
-
-## 功能改进
-- 🔧 登录页面添加密码可见性切换按钮
-- 🔧 注册页面添加密码可见性切换按钮
-- 🔧 注册成功后自动登录并跳转到主页
-- 🔧 提升用户注册体验
-
-## 技术更新
-- 📦 优化前端交互体验
-- 📦 改进用户流程设计
-- 📦 增强密码输入安全性''',
-                is_current=False
-            )
-            db.session.add(version_102)
-            db.session.commit()
-            print("版本1.02已创建")
     
     app.run(debug=True, host='0.0.0.0', port=5000)

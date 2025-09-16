@@ -34,7 +34,6 @@
             </td>
             <td>
               <strong>{{ product.title }}</strong>
-              {% if product.note %}<br><small class="text-muted">{{ product.note }}</small>{% endif %}
             </td>
             <td>
               <form method="POST" action="{{ url_for('update_cart', item_id=item.id) }}" class="d-flex align-items-center gap-2 flex-nowrap">
