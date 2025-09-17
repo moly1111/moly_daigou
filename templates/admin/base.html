@@ -135,25 +135,6 @@
 
             <!-- 主内容区 -->
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
-                <script>
-                // 管理端：为所有POST表单自动追加CSRF隐藏字段
-                document.addEventListener('DOMContentLoaded', function(){
-                    try{
-                        const token = '{{ csrf_token() if csrf_token is defined else "" }}';
-                        if(token){
-                            document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(f=>{
-                                if(!f.querySelector('input[name="csrf_token"]')){
-                                    const input = document.createElement('input');
-                                    input.type = 'hidden';
-                                    input.name = 'csrf_token';
-                                    input.value = token;
-                                    f.appendChild(input);
-                                }
-                            });
-                        }
-                    }catch(e){}
-                });
-                </script>
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">{% block page_title %}仪表盘{% endblock %}</h1>
                     <div class="btn-toolbar mb-2 mb-md-0">

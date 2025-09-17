@@ -145,25 +145,6 @@
     </nav>
 
     <main class="container mt-4">
-        <script>
-        // 为所有POST表单自动追加CSRF隐藏字段
-        document.addEventListener('DOMContentLoaded', function(){
-            try{
-                const token = '{{ csrf_token() if csrf_token is defined else "" }}';
-                if(token){
-                    document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(f=>{
-                        if(!f.querySelector('input[name="csrf_token"]')){
-                            const input = document.createElement('input');
-                            input.type = 'hidden';
-                            input.name = 'csrf_token';
-                            input.value = token;
-                            f.appendChild(input);
-                        }
-                    });
-                }
-            }catch(e){}
-        });
-        </script>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

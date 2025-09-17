@@ -15,7 +15,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import func
 import atexit
 from dotenv import load_dotenv
-from flask_wtf.csrf import CSRFProtect
 from send_email import send_email
 
 # 加载环境变量
@@ -42,9 +41,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'static/uploads')
 # 将全局上传上限提升到 50MB（具体类型限制在各上传入口控制）
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', '52428800'))
-
-# 启用全局 CSRF 保护（对所有表单/POST请求生效）
-csrf = CSRFProtect(app)
 
 # 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
