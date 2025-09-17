@@ -67,6 +67,7 @@
                             注册用户
                         </div>
                         <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_users }}</div>
+                        <div class="text-muted small">封禁：{{ banned_users }}</div>
                     </div>
                     <div class="col-auto">
                         <i class="bi bi-people text-success fa-2x"></i>
@@ -96,8 +97,18 @@
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
+                        <a href="{{ url_for('admin_basic_settings') }}" class="btn btn-outline-secondary btn-lg w-100">
+                            <i class="bi bi-gear"></i> 基础设定
+                        </a>
+                    </div>
+                    <div class="col-md-6 mb-3">
                         <a href="{{ url_for('admin_orders') }}" class="btn btn-info btn-lg w-100">
                             <i class="bi bi-list-ul"></i> 查看所有订单
+                        </a>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <a href="{{ url_for('admin_products') }}" class="btn btn-outline-success btn-lg w-100">
+                            <i class="bi bi-box-seam"></i> 商品管理（{{ product_count }}）
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
@@ -157,29 +168,44 @@
 
         <div class="card shadow">
             <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">使用提示</h6>
+                <h6 class="m-0 font-weight-bold text-primary">关键指标</h6>
             </div>
             <div class="card-body">
-                <ul class="list-unstyled mb-0">
-                    <li class="mb-2">
-                        <i class="bi bi-check-circle text-success"></i>
-                        定期检查待支付订单
-                    </li>
-                    <li class="mb-2">
-                        <i class="bi bi-check-circle text-success"></i>
-                        及时处理付款截图
-                    </li>
-                    <li class="mb-2">
-                        <i class="bi bi-check-circle text-success"></i>
-                        更新商品信息
-                    </li>
-                    <li class="mb-0">
-                        <i class="bi bi-check-circle text-success"></i>
-                        导出采购清单
-                    </li>
-                </ul>
+                <div class="mb-2"><strong>累计收入(应收口径)：</strong> ¥{{ '%.2f'|format(revenue_total_due) }}</div>
+                <div class="mb-2"><strong>累计收入(实收口径)：</strong> ¥{{ '%.2f'|format(revenue_total_paid) }}</div>
+                <div class="mb-2"><strong>待收金额：</strong> ¥{{ '%.2f'|format(receivable_pending) }}</div>
+                <div class="mb-2"><strong>今日新增订单：</strong> {{ today_orders }}</div>
+                <div class="mb-2"><strong>今日收入(应收)：</strong> ¥{{ '%.2f'|format(today_revenue_due) }}</div>
+                <div class="mb-2"><strong>今日收入(实收)：</strong> ¥{{ '%.2f'|format(today_revenue_paid) }}</div>
+                <div class="mb-0"><strong>未读用户消息：</strong> {{ unread_user_msgs }}</div>
             </div>
         </div>
     </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-lg-12">
+    <div class="card shadow">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">热销商品 TOP5（已付款）</h6>
+      </div>
+      <div class="card-body">
+        {% if top_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead><tr><th>商品</th><th>销量</th></tr></thead>
+            <tbody>
+              {% for title, qty in top_rows %}
+              <tr><td>{{ title }}</td><td>{{ qty }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">暂无数据</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

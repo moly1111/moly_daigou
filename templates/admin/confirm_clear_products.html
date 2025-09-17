@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}清空商品与购物车{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('admin_products') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回商品列表</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow">
+  <div class="card-header py-3">
+    <h6 class="m-0 font-weight-bold text-danger">危险操作</h6>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-warning">
+      <i class="bi bi-exclamation-triangle"></i>
+      此操作将删除：
+      <ul class="mb-0 mt-2">
+        <li>所有商品（及商品图片文件）</li>
+        <li>所有购物车条目</li>
+      </ul>
+      历史订单与支付记录不会被删除。
+    </div>
+    <form method="POST">
+      <button type="submit" class="btn btn-danger" onclick="return confirm('确认清空所有商品与购物车？该操作不可撤销！')">
+        <i class="bi bi-trash"></i> 确认清空
+      </button>
+    </form>
+  </div>
+ </div>
+{% endblock %}
+
+

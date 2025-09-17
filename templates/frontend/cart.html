@@ -25,8 +25,11 @@
         </thead>
         <tbody>
           {% set total = 0 %}
-          {% for item, product in cart_items %}
-          {% set subtotal = product.price_rmb * item.qty %}
+          {% for row in cart_items %}
+          {% set item = row.item %}
+          {% set product = row.product %}
+          {% set unit = row.unit_price %}
+          {% set subtotal = row.subtotal %}
           {% set total = total + (subtotal if product.status=='up' else 0) %}
           <tr class="{% if product.status!='up' %}opacity-50{% endif %}" data-active="{{ 1 if product.status=='up' else 0 }}">
             <td>
@@ -34,14 +37,14 @@
             </td>
             <td>
               <strong>{{ product.title }}</strong>
+              {% if item.variant_name %}<div class="text-muted small mt-1">规格：{{ item.variant_name }}</div>{% endif %}
             </td>
             <td>
-              <form method="POST" action="{{ url_for('update_cart', item_id=item.id) }}" class="d-flex align-items-center gap-2 flex-nowrap">
-                <input class="form-control form-control-sm qty-input" type="number" name="qty" value="{{ item.qty }}" min="0" style="width: 90px; min-width: 90px;" {% if product.status!='up' %}disabled{% endif %}>
-                <button class="btn btn-sm btn-outline-primary" type="submit" {% if product.status!='up' %}disabled{% endif %}>更新</button>
-              </form>
+              <div class="d-flex align-items-center gap-2 flex-nowrap">
+                <input class="form-control form-control-sm qty-input" type="number" name="qty" value="{{ item.qty }}" min="1" style="width: 90px; min-width: 90px;" data-update-url="{{ url_for('update_cart', item_id=item.id) }}" {% if product.status!='up' %}disabled{% endif %}>
+              </div>
             </td>
-            <td data-price="{{ '%.2f'|format(product.price_rmb) }}">¥{{ "%.2f"|format(product.price_rmb) }}</td>
+            <td data-price="{{ '%.2f'|format(unit) }}">¥{{ "%.2f"|format(unit) }}</td>
             <td class="row-subtotal">¥{{ "%.2f"|format(subtotal) }}</td>
             <td>
               <form method="POST" action="{{ url_for('remove_cart', item_id=item.id) }}">
@@ -92,7 +95,13 @@ function recalcSelected(){
     const active = row.getAttribute('data-active') === '1';
     const price = parseFloat(row.querySelector('[data-price]')?.getAttribute('data-price') || '0');
     const qtyInput = row.querySelector('.qty-input');
-    const qty = parseInt(qtyInput?.value || '0');
+    let qty = parseInt(qtyInput?.value || '1');
+    if (qtyInput && qty < 1) { qty = 1; qtyInput.value = '1'; }
+    // 实时更新行小计
+    const rowSubtotalEl = row.querySelector('.row-subtotal');
+    if (rowSubtotalEl) {
+      rowSubtotalEl.textContent = '¥' + (price * qty).toFixed(2);
+    }
     if (active) {
       all += price * qty;
       if (checked) sum += price * qty;
@@ -104,7 +113,26 @@ function recalcSelected(){
 
 // 绑定事件
 document.querySelectorAll('.row-check').forEach(cb=>cb.addEventListener('change', recalcSelected));
-document.querySelectorAll('.qty-input').forEach(inp=>inp.addEventListener('input', recalcSelected));
+document.querySelectorAll('.qty-input').forEach(inp=>{
+  inp.addEventListener('input', recalcSelected);
+  inp.addEventListener('blur', () => { if (parseInt(inp.value || '1') < 1) { inp.value = '1'; recalcSelected(); } });
+  // 失焦后将数量持久化到后端
+  inp.addEventListener('change', () => {
+    const url = inp.getAttribute('data-update-url');
+    const qty = parseInt(inp.value || '1');
+    if (!url || !Number.isFinite(qty)) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'qty';
+    hidden.value = Math.max(1, qty);
+    form.appendChild(hidden);
+    document.body.appendChild(form);
+    form.submit();
+  });
+});
 document.addEventListener('DOMContentLoaded', recalcSelected);
 
 // 结算收集选中项后提交

@@ -25,7 +25,7 @@ python app.py
 # 前台: http://127.0.0.1:5000
 # 后台: http://127.0.0.1:5000/admin
 ```
-首次启动会自动创建默认管理员账户（用户名和密码在 `.env` 文件中配置）。
+首次启动会根据 `.env` 中的管理员配置创建/更新管理员账户。注意：管理员登录仅允许 `.env` 指定的 `ADMIN_USERNAME`，其他历史账号（如 admin）将不可用。
 
 ## 环境变量配置
 1. 复制 `.env.example` 为 `.env`：
@@ -35,12 +35,13 @@ cp .env.example .env
 
 2. 编辑 `.env` 文件，配置以下变量：
 ```env
-# 应用配置
-SECRET_KEY=your-secret-key-change-in-production
+# 应用配置（必填，缺失将阻止启动）
+# 建议：python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=REPLACE_WITH_STRONG_RANDOM
 FLASK_ENV=development
 FLASK_DEBUG=True
 
-# 数据库配置
+# 数据库配置（默认SQLite，可省略）
 DATABASE_URL=sqlite:///daigou.db
 
 # 邮件配置
@@ -50,9 +51,10 @@ SENDER_EMAIL=your-email@example.com
 SENDER_PASSWORD=your-app-password
 DEFAULT_RECEIVER_EMAIL=default-receiver@example.com
 
-# 管理员账户配置
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your-admin-password
+# 管理员账户配置（必填）
+# 注意：仅允许该用户名登录后台
+ADMIN_USERNAME=REPLACE_ADMIN_NAME
+ADMIN_PASSWORD=REPLACE_ADMIN_PASSWORD
 
 # 文件上传配置
 MAX_CONTENT_LENGTH=52428800
@@ -80,6 +82,13 @@ ALTER TABLE chat_message ADD COLUMN file_mime TEXT;
 - 使用 `Gunicorn + Nginx` + systemd 管理进程与 HTTPS
 - `static/uploads/` 需写权限；Nginx 配置 `client_max_body_size 50m;`
 - APScheduler 多进程时仅在一个进程启用或改用 cron
+
+## 安全与CSRF
+- 启动强校验：`SECRET_KEY`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 必须由环境变量提供，缺失将直接报错退出。
+- 管理员登录限制：仅 `.env` 的 `ADMIN_USERNAME` 可登录。
+- 已启用全局 CSRF 保护：页面表单自动携带令牌；AJAX 请求需自行附带令牌：
+  - Header：`X-CSRFToken: {{ csrf_token() }}`
+  - 或 FormData：`csrf_token={{ csrf_token() }}`
 
 ## Git 提交建议
 忽略：`instance/`、`static/uploads/`、`.env`、`venv/`、`__pycache__/`。可附带 `.env.example` 说明变量。

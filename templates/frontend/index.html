@@ -3,18 +3,6 @@
 {% block title %}首页 - 代购网站{% endblock %}
 
 {% block content %}
-{% if not current_user.is_authenticated and site_cover %}
-<div class="row">
-  <div class="col-12">
-    <div class="card">
-      <img src="{{ url_for('static', filename='uploads/' + site_cover) }}" class="card-img-top" alt="cover">
-      <div class="card-body text-center">
-        <p class="text-muted mb-0">请先登录以查看商品</p>
-      </div>
-    </div>
-  </div>
-</div>
-{% else %}
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -35,15 +23,15 @@
                         <h6 class="card-title">{{ p.title }}</h6>
                         {% if p.note %}<p class="text-muted small">{{ p.note }}</p>{% endif %}
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-primary fw-bold">¥{{ "%.2f"|format(p.price_rmb) }}</span>
-                            <span class="badge {{ 'bg-success' if p.status=='up' else 'bg-secondary' }}">{{ '上架' if p.status=='up' else '下架' }}</span>
+                            <span class="text-primary fw-bold">¥{{ "%.2f"|format(min_price_map.get(p.id) if min_price_map else p.price_rmb) }} 元起</span>
+                            <span class="badge {{ 'bg-success' if p.status=='up' else 'bg-secondary' }}">{{ '在售' if p.status=='up' else '下架' }}</span>
                         </div>
-                        {% if p.status=='up' and is_user() %}
-                        <form class="mt-2 d-flex" method="POST" action="{{ url_for('add_to_cart', product_id=p.id) }}">
-                            <input class="form-control form-control-sm me-2" style="width:80px" type="number" name="qty" value="1" min="1">
-                            <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-cart-plus"></i> 加入购物车</button>
-                        </form>
-                        {% endif %}
+                        <div class="mt-1 small text-muted">销量：{{ (sales_map.get(p.id) if sales_map else 0) or 0 }}</div>
+                        <div class="mt-2 d-flex">
+                            <a class="btn btn-sm btn-outline-primary w-100" href="{{ url_for('product_detail', product_id=p.id) }}">
+                                <i class="bi bi-eye"></i> 查看详情
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -57,5 +45,49 @@
         {% endif %}
     </div>
 </div>
+{% if (not current_user.is_authenticated) and site_cover %}
+<!-- 封面弹窗（未登录时显示，可关闭） -->
+<div class="modal fade" id="coverModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">欢迎访问</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <img src="{{ url_for('static', filename='uploads/' + site_cover) }}" alt="cover" style="width:100%; height:auto; display:block;">
+      </div>
+      <div class="modal-footer">
+        <a href="{{ url_for('login') }}" class="btn btn-primary">登录</a>
+        <a href="{{ url_for('register') }}" class="btn btn-outline-primary">注册</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+ </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  try {
+    const isLoggedIn = {{ 'true' if current_user.is_authenticated else 'false' }};
+    const hasCover = {{ 'true' if site_cover else 'false' }};
+    if (!isLoggedIn && hasCover) {
+      // 仅首次展示：使用本地存储控制
+      if (!localStorage.getItem('coverDismissed')) {
+        const modalEl = document.getElementById('coverModal');
+        if (modalEl && window.bootstrap) {
+          const modal = new bootstrap.Modal(modalEl, { backdrop: true, keyboard: true });
+          modal.show();
+          modalEl.addEventListener('hidden.bs.modal', () => {
+            localStorage.setItem('coverDismissed', '1');
+          });
+        }
+      }
+    }
+  } catch (e) { console.warn(e); }
+});
+</script>
 {% endblock %}

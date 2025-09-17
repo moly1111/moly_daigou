@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}基础设定{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回仪表盘</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card shadow mb-4">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">站点基础信息</h6>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label">用户端标题</label>
+            <input class="form-control" name="site_title" value="{{ site_title }}" placeholder="如：Moly代购网站">
+            <div class="form-text">显示在浏览器标题与导航栏品牌处。</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">页脚文字</label>
+            <input class="form-control" name="footer_text" value="{{ footer_text }}" placeholder="如：保留所有权利.">
+            <div class="form-text">显示在页面底部版权信息后。</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">封面图片（路径）</label>
+            <input class="form-control" name="cover_image" value="{{ cover_image or '' }}" placeholder="如：covers/xxxx.jpg">
+            <div class="form-text">也可在“系统设置”中通过文件上传更新封面。</div>
+          </div>
+          <div class="text-end">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> 保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

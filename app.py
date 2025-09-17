@@ -12,20 +12,39 @@ import io
 import random
 import string
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy import func
 import atexit
 from dotenv import load_dotenv
+from flask_wtf.csrf import CSRFProtect
 from send_email import send_email
 
 # 加载环境变量
 load_dotenv()
 
+# 强制校验关键环境变量，防止使用默认占位值导致安全风险
+def _require_env(key: str, forbidden_values=None) -> str:
+    val = os.getenv(key)
+    if forbidden_values is None:
+        forbidden_values = []
+    if val is None or val.strip() == '' or val in forbidden_values:
+        raise RuntimeError(f"缺少必要环境变量 {key}，请在 .env 或系统环境中正确设置")
+    return val
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
+
+# 强制从环境变量注入 SECRET_KEY（不允许使用默认占位）
+_SECRET_KEY = _require_env('SECRET_KEY', forbidden_values=['your-secret-key-change-in-production'])
+app.config['SECRET_KEY'] = _SECRET_KEY
+
+# 数据库URL可默认使用本地SQLite，个人部署更便捷；如提供则使用环境变量
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///daigou.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'static/uploads')
 # 将全局上传上限提升到 50MB（具体类型限制在各上传入口控制）
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', '52428800'))
+
+# 启用全局 CSRF 保护（对所有表单/POST请求生效）
+csrf = CSRFProtect(app)
 
 # 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -70,11 +89,15 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(60), nullable=False)
     price_rmb = db.Column(db.Numeric(10, 2), nullable=False)
+    cost_price_rmb = db.Column(db.Numeric(10, 2), default=0)
     status = db.Column(db.String(10), default='up')  # up/down
     images = db.Column(db.Text)  # JSON string
     note = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    pinned = db.Column(db.Boolean, default=False)
+    # 规格：存储为JSON数组 [{"name":"30袋","extra_price":0},{"name":"礼盒","extra_price":20}]
+    variants = db.Column(db.Text)  # JSON string: [{name, extra_price, image?}]
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -106,6 +129,10 @@ class OrderItem(db.Model):
     qty = db.Column(db.Integer, nullable=False)
     link = db.Column(db.String(500))
     images = db.Column(db.Text)  # JSON string
+    variant_name = db.Column(db.String(100))
+    # 下单时单价/单成本（历史留痕，避免后续改价影响历史订单）
+    unit_price = db.Column(db.Numeric(10, 2))
+    unit_cost = db.Column(db.Numeric(10, 2))
 
 class CartItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -113,6 +140,7 @@ class CartItem(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     qty = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    variant_name = db.Column(db.String(100))
 
 class PaymentAttachment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -530,9 +558,18 @@ def inject_role_helpers():
             return isinstance(current_user._get_current_object(), User)
         except Exception:
             return False
-    # 站点封面
+    # 站点封面与全局设置
     cover = get_setting('cover_image')
-    return dict(is_admin=is_admin, is_user=is_user, current_year=datetime.utcnow().year, site_cover=cover)
+    site_title = get_setting('site_title', 'Moly代购网站')
+    footer_text = get_setting('footer_text', '保留所有权利.')
+    return dict(
+        is_admin=is_admin,
+        is_user=is_user,
+        current_year=datetime.utcnow().year,
+        site_cover=cover,
+        site_title=site_title,
+        footer_text=footer_text,
+    )
 
 # 自动取消未支付订单的任务
 def auto_cancel_unpaid_orders():
@@ -606,7 +643,98 @@ def index():
     # 上架优先，按更新时间倒序；下架置后
     status_order = db.case((Product.status=='down', 1), else_=0)
     products = Product.query.filter(Product.status.in_(['up','down'])).order_by(status_order.asc(), Product.updated_at.desc()).all()
-    return render_template('frontend/index.html', products=products)
+    # 统计销量（仅统计已付款订单）
+    sales_rows = db.session.query(
+        OrderItem.product_id.label('pid'),
+        func.coalesce(func.sum(OrderItem.qty), 0).label('total_qty')
+    ).join(Order, OrderItem.order_id==Order.id).\
+      filter(Order.is_paid==True, OrderItem.product_id.isnot(None)).\
+      group_by(OrderItem.product_id).all()
+    sales_map = {row.pid: int(row.total_qty or 0) for row in sales_rows}
+    # 计算最低展示价（考虑规格加价）
+    min_price_map = {}
+    for p in products:
+        base = float(p.price_rmb)
+        try:
+            variants = json.loads(p.variants) if p.variants else []
+            if variants:
+                mins = [base + float(v.get('extra_price') or 0) for v in variants]
+                min_price_map[p.id] = min(mins)
+            else:
+                min_price_map[p.id] = base
+        except Exception:
+            min_price_map[p.id] = base
+    return render_template('frontend/index.html', products=products, sales_map=sales_map, min_price_map=min_price_map)
+
+@app.route('/product/<int:product_id>')
+def product_detail(product_id: int):
+    p = Product.query.get_or_404(product_id)
+    imgs = []
+    try:
+        imgs = json.loads(p.images) if p.images else []
+    except Exception:
+        imgs = []
+    variants = []
+    try:
+        variants = json.loads(p.variants) if p.variants else []
+    except Exception:
+        variants = []
+    return render_template('frontend/product_detail.html', p=p, imgs=imgs, variants=variants)
+
+@app.route('/admin/products/<int:product_id>/stats')
+@admin_required
+def admin_product_stats(product_id: int):
+    p = Product.query.get_or_404(product_id)
+    # 各规格销量与下单数（已付款），利润使用订单项历史单价/单成本
+    rows = db.session.query(
+        OrderItem.variant_name.label('vname'),
+        func.count(func.distinct(OrderItem.order_id)).label('order_count'),
+        func.coalesce(func.sum(OrderItem.qty), 0).label('total_qty')
+    ).join(Order, OrderItem.order_id==Order.id).\
+      filter(OrderItem.product_id==p.id, Order.is_paid==True).\
+      group_by(OrderItem.variant_name).all()
+
+    # 获取各规格对应的订单号列表
+    order_map = {}
+    order_rows = db.session.query(
+        OrderItem.variant_name, OrderItem.order_id
+    ).join(Order, OrderItem.order_id==Order.id).\
+      filter(OrderItem.product_id==p.id, Order.is_paid==True).\
+      group_by(OrderItem.variant_name, OrderItem.order_id).all()
+    for vname, oid in order_rows:
+        order_no = Order.query.get(oid).order_no  # small N, acceptable
+        order_map.setdefault(vname or '', []).append(order_no)
+
+    detail = []
+    total_profit = 0.0
+    for vname, order_count, total_qty in rows:
+        qty = int(total_qty or 0)
+        # 该规格的已付款订单项
+        paid_items = db.session.query(OrderItem.qty, OrderItem.unit_price, OrderItem.unit_cost).\
+            join(Order, OrderItem.order_id==Order.id).\
+            filter(OrderItem.product_id==p.id, Order.is_paid==True, OrderItem.variant_name==(vname)).all()
+        unit_profit_example = None
+        profit = 0.0
+        for q, up, uc in paid_items:
+            upf = float(up or 0)
+            ucf = float(uc or 0)
+            if unit_profit_example is None and (up is not None or uc is not None):
+                unit_profit_example = upf - ucf
+            profit += (upf - ucf) * int(q or 0)
+        # 如果示例仍为空且数量>0，用平均单件利润（总利润/总数量）展示更直观
+        if unit_profit_example is None and qty > 0:
+            unit_profit_example = profit / qty
+        total_profit += profit
+        detail.append({
+            'name': vname or '（未选规格）',
+            'order_count': int(order_count or 0),
+            'total_qty': qty,
+            'unit_profit': unit_profit_example if unit_profit_example is not None else 0.0,
+            'profit': profit,
+            'orders': order_map.get(vname or '', [])
+        })
+
+    return render_template('admin/product_stats.html', p=p, detail=detail, total_profit=total_profit)
 
 @app.route('/cart')
 @login_required
@@ -619,7 +747,21 @@ def cart_page():
         .filter(CartItem.user_id==current_user.id)\
         .order_by(status_order.asc(), CartItem.created_at.asc())\
         .all()
-    return render_template('frontend/cart.html', cart_items=items)
+    # 计算每条目的单价（含规格加价）与小计
+    display = []
+    for ci, p in items:
+        unit = float(p.price_rmb)
+        try:
+            if ci.variant_name and p.variants:
+                vs = json.loads(p.variants)
+                for v in vs:
+                    if v.get('name') == ci.variant_name:
+                        unit += float(v.get('extra_price') or 0)
+                        break
+        except Exception:
+            pass
+        display.append({'item': ci, 'product': p, 'unit_price': unit, 'subtotal': unit * ci.qty})
+    return render_template('frontend/cart.html', cart_items=display)
 
 @app.route('/cart/add/<int:product_id>', methods=['POST'])
 @login_required
@@ -630,15 +772,17 @@ def add_to_cart(product_id: int):
         flash('该商品未上架，无法加入购物车', 'error')
         return redirect(url_for('index'))
     qty = int(request.form.get('qty', '1') or '1')
+    variant_name = request.form.get('variant_name') or None
     qty = max(1, min(qty, 999))
-    item = CartItem.query.filter_by(user_id=current_user.id, product_id=product_id).first()
+    item = CartItem.query.filter_by(user_id=current_user.id, product_id=product_id, variant_name=variant_name).first()
     if item:
         item.qty += qty
     else:
-        item = CartItem(user_id=current_user.id, product_id=product_id, qty=qty)
+        item = CartItem(user_id=current_user.id, product_id=product_id, qty=qty, variant_name=variant_name)
         db.session.add(item)
     db.session.commit()
-    flash(f'“{product.title}” ×{qty} 已加入购物车', 'success')
+    vtip = f'（{variant_name}）' if variant_name else ''
+    flash(f'“{product.title}{vtip}” ×{qty} 已加入购物车', 'success')
     return redirect(request.referrer or url_for('index'))
 
 @app.route('/cart/update/<int:item_id>', methods=['POST'])
@@ -676,6 +820,11 @@ def cart_checkout():
     if not ids:
         flash('请先选择要结算的商品', 'error')
         return redirect(url_for('cart_page'))
+    # 校验收货地址是否完整（邮编可空）
+    addr = current_user.address if hasattr(current_user, 'address') else None
+    if not addr or not addr.name or not addr.phone or not addr.address_text:
+        flash('请先完善收货地址（收货人、手机号、地址），再提交订单', 'error')
+        return redirect(url_for('profile_address'))
     cart_items = db.session.query(CartItem, Product).join(Product, CartItem.product_id==Product.id)\
         .filter(CartItem.user_id==current_user.id, CartItem.id.in_(ids)).all()
     if not cart_items:
@@ -689,8 +838,25 @@ def cart_checkout():
         flash(f'以下商品已下架，未能提交订单：{names}。请移除或等待上架。', 'error')
         return redirect(url_for('cart_page'))
 
-    # 计算商品金额
-    amount_items = sum([float(p.price_rmb) * ci.qty for (ci, p) in cart_items])
+    # 计算商品金额，并为每个条目计算当时单价/单成本
+    amount_items = 0.0
+    per_item_prices = {}
+    for (ci, p) in cart_items:
+        # 规格可能存在加价：从 p.variants 中查找
+        unit_price = float(p.price_rmb)
+        unit_cost = float(p.cost_price_rmb or 0)
+        try:
+            variants = json.loads(p.variants) if p.variants else []
+            if ci.variant_name:
+                for v in variants:
+                    if v.get('name') == ci.variant_name:
+                        unit_price += float(v.get('extra_price') or 0)
+                        # 若未来支持 extra_cost，可在此叠加到 unit_cost
+                        break
+        except Exception:
+            pass
+        per_item_prices[ci.id] = (unit_price, unit_cost)
+        amount_items += unit_price * ci.qty
     amount_shipping = 0.0
     order_no = generate_order_no()
     order = Order(
@@ -704,7 +870,17 @@ def cart_checkout():
     db.session.flush()
 
     for (ci, p) in cart_items:
-        oi = OrderItem(order_id=order.id, product_id=p.id, name=p.title, spec_note=p.note or '', qty=ci.qty)
+        up, uc = per_item_prices.get(ci.id, (float(p.price_rmb), float(p.cost_price_rmb or 0)))
+        oi = OrderItem(
+            order_id=order.id,
+            product_id=p.id,
+            name=p.title,
+            spec_note=p.note or '',
+            qty=ci.qty,
+            variant_name=ci.variant_name,
+            unit_price=up,
+            unit_cost=uc,
+        )
         db.session.add(oi)
         db.session.delete(ci)
     db.session.commit()
@@ -876,6 +1052,28 @@ def order_detail(order_no):
     # 获取支付二维码设置
     alipay_qr = get_setting('alipay_qrcode')
     wechat_qr = get_setting('wechat_qrcode')
+
+    # 计算每个条目的单价（优先使用历史存储；否则按当前规格计算）
+    try:
+        for it in order.items:
+            unit = float(it.unit_price or 0)
+            if unit:
+                it.unit_price = unit
+                continue
+            p = Product.query.get(it.product_id) if it.product_id else None
+            if p:
+                unit = float(p.price_rmb or 0)
+                try:
+                    if it.variant_name and p.variants:
+                        for v in json.loads(p.variants):
+                            if v.get('name') == it.variant_name:
+                                unit += float(v.get('extra_price') or 0)
+                                break
+                except Exception:
+                    pass
+            it.unit_price = unit
+    except Exception:
+        pass
     
     return render_template('frontend/order_detail.html', 
                          order=order, 
@@ -927,7 +1125,16 @@ def admin_login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        admin = AdminUser.query.filter_by(username=username).first()
+        # 仅允许环境变量指定的管理员用户名登录，避免历史/多余账号（如 admin）可用
+        try:
+            expected_username = _require_env('ADMIN_USERNAME')
+        except Exception:
+            expected_username = None
+        if not expected_username or username != expected_username:
+            flash('用户名或密码错误', 'error')
+            return render_template('admin/login.html')
+
+        admin = AdminUser.query.filter_by(username=expected_username).first()
         
         if admin and check_password_hash(admin.password_hash, password):
             login_user(admin, remember=True, duration=timedelta(days=7))
@@ -947,20 +1154,56 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     
-    # 统计信息
+    # 订单/用户/商品汇总
     total_orders = Order.query.count()
+    paid_orders = Order.query.filter_by(is_paid=True).count()
     pending_orders = Order.query.filter_by(status='pending').count()
     processing_orders = Order.query.filter_by(status='processing').count()
     total_users = User.query.count()
-    
-    # 获取当前版本信息
+    banned_users = User.query.filter_by(is_banned=True).count()
+    product_count = Product.query.count()
+
+    # 收入与待收：同时提供应收与实收口径
+    from sqlalchemy import func as SAfunc
+    revenue_total_due = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==True).scalar() or 0
+    revenue_total_paid = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_paid), 0)).filter(Order.is_paid==True).scalar() or 0
+    receivable_pending = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==False).scalar() or 0
+
+    # 今日统计（按UTC存储，直接比较日期）
+    today = datetime.utcnow().date()
+    today_start = datetime(today.year, today.month, today.day)
+    today_orders = Order.query.filter(Order.created_at >= today_start).count()
+    today_revenue_due = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==True, Order.paid_at>=today_start).scalar() or 0
+    today_revenue_paid = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_paid), 0)).filter(Order.is_paid==True, Order.paid_at>=today_start).scalar() or 0
+
+    # 未读消息（来自用户）
+    unread_user_msgs = ChatMessage.query.filter_by(sender='user', is_read_by_admin=False).count()
+
+    # Top5 商品销量（已付款订单）
+    top_rows = db.session.query(
+        Product.title, SAfunc.coalesce(SAfunc.sum(OrderItem.qty),0).label('qty')
+    ).join(OrderItem, OrderItem.product_id==Product.id).join(Order, OrderItem.order_id==Order.id).\
+      filter(Order.is_paid==True).group_by(Product.id).order_by(SAfunc.sum(OrderItem.qty).desc()).limit(5).all()
+
+    # 当前版本
     current_version = Version.query.filter_by(is_current=True).first()
     
     return render_template('admin/dashboard.html',
                          total_orders=total_orders,
+                         paid_orders=paid_orders,
                          pending_orders=pending_orders,
                          processing_orders=processing_orders,
                          total_users=total_users,
+                         banned_users=banned_users,
+                         product_count=product_count,
+                         revenue_total_due=float(revenue_total_due),
+                         revenue_total_paid=float(revenue_total_paid),
+                         receivable_pending=float(receivable_pending),
+                         today_orders=today_orders,
+                         today_revenue_due=float(today_revenue_due),
+                         today_revenue_paid=float(today_revenue_paid),
+                         unread_user_msgs=unread_user_msgs,
+                         top_rows=top_rows,
                          current_version=current_version,
                          now=datetime.utcnow())
 
@@ -969,8 +1212,51 @@ def admin_dashboard():
 def admin_products():
     
     status_order = db.case((Product.status=='down', 1), else_=0)
-    products = Product.query.order_by(status_order.asc(), Product.updated_at.desc()).all()
-    return render_template('admin/products.html', products=products)
+    # 订单统计（仅统计已付款订单）
+    sub_orders = db.session.query(
+        OrderItem.product_id.label('pid'),
+        func.count(func.distinct(OrderItem.order_id)).label('order_count'),
+        func.coalesce(func.sum(OrderItem.qty), 0).label('total_qty')
+    ).join(Order, OrderItem.order_id==Order.id).\
+      filter(Order.is_paid==True).\
+      group_by(OrderItem.product_id).subquery()
+
+    # 各规格销量（已付款）
+    variant_qty_rows = db.session.query(
+        OrderItem.product_id, OrderItem.variant_name, func.coalesce(func.sum(OrderItem.qty), 0)
+    ).join(Order, OrderItem.order_id==Order.id).\
+      filter(Order.is_paid==True).\
+      group_by(OrderItem.product_id, OrderItem.variant_name).all()
+    qty_by_variant = {}
+    for pid, vname, q in variant_qty_rows:
+        qty_by_variant.setdefault(pid, {})[vname or ''] = int(q or 0)
+
+    rows = db.session.query(Product, sub_orders.c.order_count, sub_orders.c.total_qty).\
+        outerjoin(sub_orders, Product.id==sub_orders.c.pid).\
+        order_by(db.desc(Product.pinned), status_order.asc(), Product.updated_at.desc()).all()
+
+    enriched = []
+    total_profit_all = 0.0
+    for p, order_count, total_qty in rows:
+        # 利润采用已付款订单项的历史单价/单成本汇总，避免改价回溯
+        paid_items = db.session.query(OrderItem.qty, OrderItem.unit_price, OrderItem.unit_cost).\
+            join(Order, OrderItem.order_id==Order.id).\
+            filter(OrderItem.product_id==p.id, Order.is_paid==True).all()
+        profit = 0.0
+        for qty, up, uc in paid_items:
+            try:
+                profit += float((up or 0)) * int(qty or 0) - float((uc or 0)) * int(qty or 0)
+            except Exception:
+                pass
+        total_profit_all += profit
+        enriched.append({
+            'product': p,
+            'order_count': int(order_count or 0),
+            'total_qty': int(total_qty or 0),
+            'total_profit': profit
+        })
+
+    return render_template('admin/products.html', products=enriched, total_profit=total_profit_all)
 
 # 用户管理
 @app.route('/admin/users')
@@ -979,6 +1265,49 @@ def admin_products():
 def admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=users)
+
+@app.route('/admin/users/new', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_user_new():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        name = request.form.get('name', '').strip()
+        phone = request.form.get('phone', '').strip()
+        address_text = request.form.get('address_text', '').strip()
+        postal_code = request.form.get('postal_code', '').strip()
+
+        if not is_valid_email(email):
+            flash('邮箱格式不正确', 'error')
+            return render_template('admin/user_new.html', form=request.form)
+        if not password or len(password) < 6:
+            flash('请设置长度至少为6位的密码', 'error')
+            return render_template('admin/user_new.html', form=request.form)
+        if User.query.filter_by(email=email).first():
+            flash('该邮箱已被注册', 'error')
+            return render_template('admin/user_new.html', form=request.form)
+
+        user = User(email=email, password_hash=generate_password_hash(password))
+        db.session.add(user)
+        db.session.flush()
+
+        # 可选创建地址（若信息完整则创建）
+        if name and phone and address_text:
+            addr = Address(
+                user_id=user.id,
+                name=name,
+                phone=phone,
+                address_text=address_text,
+                postal_code=postal_code
+            )
+            db.session.add(addr)
+
+        db.session.commit()
+        flash('用户已创建', 'success')
+        return redirect(url_for('admin_users'))
+
+    return render_template('admin/user_new.html')
 
 @app.route('/admin/users/<int:user_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -1070,11 +1399,10 @@ def admin_new_product():
     
     if request.method == 'POST':
         title = request.form['title']
-        price_rmb = float(request.form['price_rmb'])
         note = request.form.get('note', '')
         status = request.form.get('status', 'up')
         
-        # 处理图片上传
+        # 处理图片上传（商品通用图片）
         uploaded_images = []
         if 'images' in request.files:
             files = request.files.getlist('images')
@@ -1087,12 +1415,53 @@ def admin_new_product():
                     file.save(filepath)
                     uploaded_images.append(f'products/{filename}')
         
+        # 规格解析：接收 variants_text（JSON：[{name, price, cost}...]）
+        variants_text = request.form.get('variants_text', '').strip()
+        raw_list = []
+        try:
+            raw_list = json.loads(variants_text) if variants_text else []
+        except Exception:
+            raw_list = []
+        # 基准价为所有规格展示价的最小值
+        base_price = 0.0
+        if raw_list:
+            prices = [float(x.get('price') or 0) for x in raw_list if (x.get('price') is not None)]
+            base_price = min(prices) if prices else 0.0
+        base_cost = 0.0
+        if raw_list:
+            costs = [float(x.get('cost') or 0) for x in raw_list if (x.get('cost') is not None)]
+            base_cost = min(costs) if costs else 0.0
+        # 处理规格图片上传：与 v_name/v_price/v_cost 行按序对应
+        variants = []
+        # 根据序号逐一取文件 v_image_0, v_image_1 ...
+        idx = 0
+        for x in raw_list:
+            name = (x.get('name') or '').strip()
+            price = float(x.get('price') or 0)
+            extra = price - base_price
+            image_rel = None
+            f = request.files.get(f'v_image_{idx}')
+            if f and f.filename and allowed_file(f.filename):
+                fname = secure_filename(f.filename)
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                fname = ts + fname
+                fpath = os.path.join(app.config['UPLOAD_FOLDER'], 'products', fname)
+                f.save(fpath)
+                image_rel = f'products/{fname}'
+            idx += 1
+            v = {'name': name, 'extra_price': extra}
+            if image_rel:
+                v['image'] = image_rel
+            variants.append(v)
+
         product = Product(
             title=title,
-            price_rmb=price_rmb,
+            price_rmb=base_price,
+            cost_price_rmb=base_cost,
             note=note,
             status=status,
-            images=json.dumps(uploaded_images) if uploaded_images else None
+            images=json.dumps(uploaded_images) if uploaded_images else None,
+            variants=json.dumps(variants) if variants else None
         )
         db.session.add(product)
         db.session.commit()
@@ -1109,44 +1478,205 @@ def admin_edit_product(product_id):
     product = Product.query.get_or_404(product_id)
     
     if request.method == 'POST':
-        # 仅修改上下架状态的快捷操作（列表页表单只提交 status）
-        if 'title' not in request.form and 'price_rmb' not in request.form:
-            new_status = request.form.get('status')
-            if new_status in ['up', 'down']:
-                product.status = new_status
-                db.session.commit()
-                flash('商品状态已更新', 'success')
-                return redirect(url_for('admin_products'))
-        
-        # 正常编辑表单
-        product.title = request.form['title']
-        product.price_rmb = float(request.form['price_rmb'])
-        product.note = request.form.get('note', '')
-        product.status = request.form.get('status', 'up')
-        
-        # 处理图片上传
-        if 'images' in request.files:
-            files = request.files.getlist('images')
-            new_images = []
-            for file in files:
-                if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(file.filename)
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-                    filename = timestamp + filename
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'products', filename)
-                    file.save(filepath)
-                    new_images.append(f'products/{filename}')
+        try:
+            print('[EDIT_PRODUCT] POST received', {'keys': list(request.form.keys())})
+            # 仅修改上下架状态的快捷操作（列表页表单只提交 status）
+            if 'title' not in request.form and 'price_rmb' not in request.form:
+                new_status = request.form.get('status')
+                if new_status in ['up', 'down']:
+                    product.status = new_status
+                    db.session.commit()
+                    flash('商品状态已更新', 'success')
+                    return redirect(url_for('admin_products'))
             
-            if new_images:
-                existing_images = json.loads(product.images) if product.images else []
-                all_images = existing_images + new_images
-                product.images = json.dumps(all_images)
-        
-        db.session.commit()
-        flash('商品更新成功', 'success')
-        return redirect(url_for('admin_products'))
+            # 正常编辑表单
+            product.title = request.form.get('title', product.title)
+            product.note = request.form.get('note', '')
+            product.status = request.form.get('status', 'up')
+            # 规格（JSON：[{name, price, cost}...]）并重算基准价
+            variants_text = request.form.get('variants_text', '').strip()
+            raw_list = []
+            try:
+                raw_list = json.loads(variants_text) if variants_text else []
+            except Exception as e:
+                print('[EDIT_PRODUCT] variants_text parse error', e, variants_text)
+                raw_list = []
+            if raw_list:
+                prices = [float(x.get('price') or 0) for x in raw_list if (x.get('price') is not None)]
+                costs = [float(x.get('cost') or 0) for x in raw_list if (x.get('cost') is not None)]
+                base_price = min(prices) if prices else 0.0
+                base_cost = min(costs) if costs else 0.0
+                variants = []
+                idx = 0
+                for x in raw_list:
+                    name = (x.get('name') or '').strip()
+                    price = float(x.get('price') or 0)
+                    extra = price - base_price
+                    image_rel = None
+                    f = request.files.get(f'v_image_{idx}')
+                    if f and f.filename and allowed_file(f.filename):
+                        fname = secure_filename(f.filename)
+                        ts = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                        fname = ts + fname
+                        fpath = os.path.join(app.config['UPLOAD_FOLDER'], 'products', fname)
+                        f.save(fpath)
+                        image_rel = f'products/{fname}'
+                    else:
+                        existed = request.form.get(f'v_image_existing_{idx}')
+                        if existed:
+                            image_rel = existed
+                    idx += 1
+                    v = {'name': name, 'extra_price': extra}
+                    if image_rel:
+                        v['image'] = image_rel
+                    variants.append(v)
+                product.price_rmb = base_price
+                product.cost_price_rmb = base_cost
+                product.variants = json.dumps(variants) if variants else None
+            
+            # 处理图片上传
+            if 'images' in request.files:
+                files = request.files.getlist('images')
+                new_images = []
+                for file in files:
+                    if file and file.filename and allowed_file(file.filename):
+                        filename = secure_filename(file.filename)
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                        filename = timestamp + filename
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'products', filename)
+                        file.save(filepath)
+                        new_images.append(f'products/{filename}')
+                
+                if new_images:
+                    existing_images = json.loads(product.images) if product.images else []
+                    all_images = existing_images + new_images
+                    product.images = json.dumps(all_images)
+            
+            db.session.commit()
+            print('[EDIT_PRODUCT] commit done for product', product.id)
+            flash('商品更新成功', 'success')
+            return redirect(url_for('admin_products'))
+        except Exception as e:
+            db.session.rollback()
+            print('[EDIT_PRODUCT] error:', e)
+            flash(f'保存失败：{e}', 'error')
+            return render_template('admin/product_form.html', product=product)
+        except Exception as e:
+            db.session.rollback()
+            print('[EDIT_PRODUCT] error:', e)
+            flash(f'保存失败：{e}', 'error')
+            return render_template('admin/product_form.html', product=product)
     
     return render_template('admin/product_form.html', product=product)
+
+@app.post('/admin/products/<int:product_id>/delete-image')
+@admin_required
+def admin_product_delete_image(product_id):
+    product = Product.query.get_or_404(product_id)
+    image_url = request.form.get('image_url')
+    if not image_url:
+        return redirect(url_for('admin_edit_product', product_id=product.id))
+    try:
+        imgs = json.loads(product.images) if product.images else []
+        if image_url in imgs:
+            imgs.remove(image_url)
+            product.images = json.dumps(imgs)
+            # 删除物理文件
+            abs_path = os.path.join(app.config['UPLOAD_FOLDER'], image_url.replace('/', os.sep))
+            if os.path.exists(abs_path):
+                try:
+                    os.remove(abs_path)
+                except Exception:
+                    pass
+            db.session.commit()
+            flash('图片已删除', 'success')
+    except Exception as e:
+        flash(f'删除失败: {e}', 'error')
+    return redirect(url_for('admin_edit_product', product_id=product.id))
+
+@app.post('/admin/products/<int:product_id>/pin')
+@admin_required
+def admin_product_pin(product_id: int):
+    p = Product.query.get_or_404(product_id)
+    p.pinned = True
+    p.updated_at = datetime.utcnow()
+    db.session.commit()
+    flash('已置顶该商品', 'success')
+    return redirect(url_for('admin_products'))
+
+@app.post('/admin/products/<int:product_id>/images/upload')
+@admin_required
+def admin_product_upload_image(product_id: int):
+    product = Product.query.get_or_404(product_id)
+    file = request.files.get('image')
+    if not file or not file.filename or not allowed_file(file.filename):
+        return jsonify({'ok': False, 'msg': '请选择有效图片'}), 400
+    try:
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+        filename = timestamp + filename
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'products', filename)
+        file.save(filepath)
+        rel = f'products/{filename}'
+        # 追加到 product.images
+        imgs = []
+        try:
+            imgs = json.loads(product.images) if product.images else []
+        except Exception:
+            imgs = []
+        imgs.append(rel)
+        product.images = json.dumps(imgs)
+        db.session.commit()
+        return jsonify({'ok': True, 'url': url_for('static', filename='uploads/' + rel), 'rel': rel})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'ok': False, 'msg': str(e)}), 500
+
+@app.post('/admin/products/<int:product_id>/delete')
+@admin_required
+def admin_product_delete(product_id: int):
+    product = Product.query.get_or_404(product_id)
+    try:
+        # 清理购物车引用
+        CartItem.query.filter_by(product_id=product.id).delete()
+        # 订单条目解除关联而不删除历史记录
+        for oi in OrderItem.query.filter_by(product_id=product.id).all():
+            oi.product_id = None
+        # 删除商品通用图片
+        try:
+            imgs = json.loads(product.images) if product.images else []
+            for rel in imgs:
+                abs_path = os.path.join(app.config['UPLOAD_FOLDER'], rel.replace('/', os.sep))
+                if os.path.exists(abs_path):
+                    try:
+                        os.remove(abs_path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # 删除规格图片
+        try:
+            vs = json.loads(product.variants) if product.variants else []
+            for v in vs:
+                rel = v.get('image')
+                if rel:
+                    abs_path = os.path.join(app.config['UPLOAD_FOLDER'], rel.replace('/', os.sep))
+                    if os.path.exists(abs_path):
+                        try:
+                            os.remove(abs_path)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        db.session.delete(product)
+        db.session.commit()
+        flash('商品已删除', 'success')
+        return redirect(url_for('admin_products'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'删除失败：{e}', 'error')
+        return redirect(url_for('admin_edit_product', product_id=product.id))
 
 @app.route('/admin/orders')
 @admin_required
@@ -1257,6 +1787,27 @@ def admin_new_order():
 def admin_order_detail(order_no):
     
     order = Order.query.filter_by(order_no=order_no).first_or_404()
+    # 计算每个条目的单价（优先使用历史存储；否则按当前规格计算）
+    try:
+        for it in order.items:
+            unit = float(it.unit_price or 0)
+            if unit:
+                it.unit_price = unit
+                continue
+            p = Product.query.get(it.product_id) if it.product_id else None
+            if p:
+                unit = float(p.price_rmb or 0)
+                try:
+                    if it.variant_name and p.variants:
+                        for v in json.loads(p.variants):
+                            if v.get('name') == it.variant_name:
+                                unit += float(v.get('extra_price') or 0)
+                                break
+                except Exception:
+                    pass
+            it.unit_price = unit
+    except Exception:
+        pass
     return render_template('admin/order_detail.html', order=order)
 
 @app.route('/admin/orders/<order_no>/mark-paid', methods=['POST'])
@@ -1264,6 +1815,12 @@ def admin_order_detail(order_no):
 def admin_mark_paid(order_no):
     
     order = Order.query.filter_by(order_no=order_no).first_or_404()
+    # 读取实收金额，默认使用应付金额
+    try:
+        amount_paid = float(request.form.get('amount_paid') or order.amount_due or 0)
+    except Exception:
+        amount_paid = float(order.amount_due or 0)
+    order.amount_paid = amount_paid
     order.is_paid = True
     order.paid_at = datetime.utcnow()
     order.status = 'processing'
@@ -1303,6 +1860,7 @@ def admin_mark_unpaid(order_no):
     order.is_paid = False
     order.paid_at = None
     order.status = 'pending'
+    order.amount_paid = 0
     db.session.commit()
     
     flash('订单已标记为未付款', 'success')
@@ -1367,12 +1925,19 @@ def admin_update_status(order_no):
 @app.route('/admin/purchase-list', methods=['GET'])
 @admin_required
 def admin_purchase_preview():
+    """采购清单预览：展示已付款订单（默认processing），支持时间与关键字筛选。
+    适配规格：若有 OrderItem.variant_name 优先展示，否则回退到 spec_note。
+    商品名：若关联商品，展示商品库标题，否则用订单项名称。
+    """
     # 筛选参数
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     keyword = request.args.get('q', '')
+    status = request.args.get('status', 'processing')  # processing/all
 
-    orders_q = Order.query.filter_by(status='processing', is_paid=True)
+    orders_q = Order.query.filter(Order.is_paid == True)
+    if status != 'all':
+        orders_q = orders_q.filter(Order.status == 'processing')
     if start_date:
         try:
             dt = datetime.strptime(start_date + ' 00:00:00', '%Y-%m-%d %H:%M:%S')
@@ -1391,12 +1956,21 @@ def admin_purchase_preview():
 
     orders = orders_q.order_by(Order.created_at.asc()).all()
 
-    # 展平到条目层
+    # 展平到条目层（适配规格与商品名）
     rows = []
     for order in orders:
         user = order.user
         addr = user.address
         for item in order.items:
+            # 仅统计该订单的条目
+            # 名称：商品库优先
+            display_name = item.name
+            if item.product_id:
+                p = Product.query.get(item.product_id)
+                if p:
+                    display_name = p.title
+            # 规格：variant_name 优先
+            spec = item.variant_name or item.spec_note or ''
             rows.append({
                 'order_no': order.order_no,
                 'created_at': order.created_at,
@@ -1404,13 +1978,13 @@ def admin_purchase_preview():
                 'receiver': addr.name if addr else '',
                 'phone': addr.phone if addr else '',
                 'address': addr.address_text if addr else '',
-                'name': item.name,
-                'spec': item.spec_note or '',
+                'name': display_name,
+                'spec': spec,
                 'qty': item.qty,
                 'source': '商品库' if item.product_id else '自定义'
             })
 
-    return render_template('admin/purchase_preview.html', rows=rows, start_date=start_date or '', end_date=end_date or '', keyword=keyword)
+    return render_template('admin/purchase_preview.html', rows=rows, start_date=start_date or '', end_date=end_date or '', keyword=keyword, status=status)
 
 @app.route('/admin/purchase-list/download', methods=['GET'])
 @admin_required
@@ -1418,8 +1992,11 @@ def admin_purchase_download():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     keyword = request.args.get('q', '')
+    status = request.args.get('status', 'processing')
 
-    orders_q = Order.query.filter_by(status='processing', is_paid=True)
+    orders_q = Order.query.filter(Order.is_paid == True)
+    if status != 'all':
+        orders_q = orders_q.filter(Order.status == 'processing')
     if start_date:
         try:
             dt = datetime.strptime(start_date + ' 00:00:00', '%Y-%m-%d %H:%M:%S')
@@ -1440,7 +2017,7 @@ def admin_purchase_download():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['订单号','下单时间','用户邮箱','收货人','手机号','地址','商品名称','规格备注','数量','商品来源','商品链接','备注'])
+    writer.writerow(['订单号','下单时间','用户邮箱','收货人','手机号','地址','商品名称','规格','数量','来源'])
     for order in orders:
         user = order.user
         addr = user.address
@@ -1448,6 +2025,12 @@ def admin_purchase_download():
         phone = addr.phone if addr else ''
         addr_text = addr.address_text if addr else ''
         for item in order.items:
+            display_name = item.name
+            if item.product_id:
+                p = Product.query.get(item.product_id)
+                if p:
+                    display_name = p.title
+            spec = item.variant_name or item.spec_note or ''
             writer.writerow([
                 order.order_no,
                 order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1455,12 +2038,10 @@ def admin_purchase_download():
                 receiver,
                 phone,
                 addr_text,
-                item.name,
-                item.spec_note or '',
+                display_name,
+                spec,
                 item.qty,
                 ('商品库' if item.product_id else '自定义'),
-                '',
-                ''
             ])
     output.seek(0)
 
@@ -1495,6 +2076,24 @@ def admin_settings():
                          wechat_qr=wechat_qr,
                          auto_cancel_enabled=auto_cancel_enabled,
                          auto_cancel_hours=auto_cancel_hours)
+
+@app.route('/admin/basic-settings', methods=['GET', 'POST'])
+@admin_required
+def admin_basic_settings():
+    if request.method == 'POST':
+        title = request.form.get('site_title', '').strip() or 'Moly代购网站'
+        footer = request.form.get('footer_text', '').strip() or '保留所有权利.'
+        cover = request.form.get('cover_image', '')
+        set_setting('site_title', title)
+        set_setting('footer_text', footer)
+        if cover:
+            set_setting('cover_image', cover)
+        flash('基础设定已保存', 'success')
+        return redirect(url_for('admin_basic_settings'))
+    return render_template('admin/basic_settings.html',
+                           site_title=get_setting('site_title', 'Moly代购网站'),
+                           footer_text=get_setting('footer_text', '保留所有权利.'),
+                           cover_image=get_setting('cover_image'))
 
 @app.route('/admin/settings/cover', methods=['POST'])
 @admin_required
@@ -1556,6 +2155,8 @@ def admin_update_order_rules():
     
     flash('订单规则更新成功', 'success')
     return redirect(url_for('admin_settings'))
+
+# （安全考虑）已移除清空商品与购物车功能
 
 # 版本管理路由
 @app.route('/admin/versions')
@@ -1630,10 +2231,58 @@ def admin_delete_version(version_id):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # 旧库自动迁移：为 Product 添加 cost_price_rmb 列
+        try:
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols = [c['name'] for c in insp.get_columns('product')]
+            if 'cost_price_rmb' not in cols:
+                db.session.execute(text('ALTER TABLE product ADD COLUMN cost_price_rmb NUMERIC(10,2) DEFAULT 0'))
+                db.session.commit()
+        except Exception as e:
+            print('检查/添加列 cost_price_rmb 失败: ', e)
+
+        # 旧库自动迁移：为 Product 添加 variants 列
+        try:
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols = [c['name'] for c in insp.get_columns('product')]
+            if 'variants' not in cols:
+                db.session.execute(text('ALTER TABLE product ADD COLUMN variants TEXT'))
+                db.session.commit()
+            if 'pinned' not in cols:
+                db.session.execute(text('ALTER TABLE product ADD COLUMN pinned BOOLEAN DEFAULT 0'))
+                db.session.commit()
+        except Exception as e:
+            print('检查/添加列 variants/pinned 失败: ', e)
+
+        # 旧库自动迁移：为 CartItem / OrderItem 添加 variant_name 列
+        try:
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols_cart = [c['name'] for c in insp.get_columns('cart_item')]
+            if 'variant_name' not in cols_cart:
+                db.session.execute(text('ALTER TABLE cart_item ADD COLUMN variant_name VARCHAR(100)'))
+                db.session.commit()
+            cols_oi = [c['name'] for c in insp.get_columns('order_item')]
+            if 'variant_name' not in cols_oi:
+                db.session.execute(text('ALTER TABLE order_item ADD COLUMN variant_name VARCHAR(100)'))
+                db.session.commit()
+            # 为订单项增加历史单价/单成本
+            cols_oi = [c['name'] for c in insp.get_columns('order_item')]
+            if 'unit_price' not in cols_oi:
+                db.session.execute(text('ALTER TABLE order_item ADD COLUMN unit_price NUMERIC(10,2)'))
+                db.session.commit()
+            cols_oi = [c['name'] for c in insp.get_columns('order_item')]
+            if 'unit_cost' not in cols_oi:
+                db.session.execute(text('ALTER TABLE order_item ADD COLUMN unit_cost NUMERIC(10,2)'))
+                db.session.commit()
+        except Exception as e:
+            print('检查/添加列 variant_name 失败: ', e)
         
-        # 创建或更新默认管理员账户
-        admin_username = os.getenv('ADMIN_USERNAME', 'Moly_Love_you')
-        admin_password = os.getenv('ADMIN_PASSWORD', 'MolySoCute!!889150')
+        # 创建或更新管理员账户（强制要求从环境注入，禁止默认值）
+        admin_username = _require_env('ADMIN_USERNAME')
+        admin_password = _require_env('ADMIN_PASSWORD')
         
         admin = AdminUser.query.filter_by(username=admin_username).first()
         if not admin:

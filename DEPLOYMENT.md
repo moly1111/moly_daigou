@@ -2,11 +2,10 @@
 
 ## GitHub 上传准备
 
-### 1. 环境变量配置
-- ✅ 已创建 `.env.example` 示例文件
-- ✅ 已创建 `.env` 本地配置文件（包含真实配置）
-- ✅ 已更新 `.gitignore` 忽略敏感文件
-- ✅ 已修改代码使用环境变量
+### 1. 环境变量配置（必读）
+- 必填：`SECRET_KEY`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 必须在环境变量提供，否则应用会在启动时报错退出
+- 建议：复制 `.env.example` 为 `.env` 并填写真实值（如仓库无该文件，按下文示例自行创建）
+- `.gitignore` 应忽略 `.env`/`instance/`/`static/uploads/`
 
 ### 2. 敏感信息保护
 以下信息已移至环境变量，不会上传到GitHub：
@@ -48,9 +47,23 @@ venv\Scripts\activate     # Windows
 # 3. 安装依赖
 pip install -r requirements.txt
 
-# 4. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，填入真实配置
+# 4. 配置环境变量（如有 .env.example，可复制；否则按示例创建）
+cat > .env << 'EOF'
+SECRET_KEY=REPLACE_WITH_STRONG_RANDOM
+ADMIN_USERNAME=REPLACE_ADMIN_NAME
+ADMIN_PASSWORD=REPLACE_ADMIN_PASSWORD
+DATABASE_URL=sqlite:///daigou.db
+SMTP_SERVER=smtp.163.com
+SMTP_PORT=465
+SENDER_EMAIL=your-email@example.com
+SENDER_PASSWORD=your-app-password
+DEFAULT_RECEIVER_EMAIL=default-receiver@example.com
+MAX_CONTENT_LENGTH=52428800
+UPLOAD_FOLDER=static/uploads
+FLASK_ENV=production
+FLASK_DEBUG=False
+TIMEZONE=Asia/Shanghai
+EOF
 
 # 5. 运行应用
 python app.py
@@ -102,8 +115,8 @@ python app.py
 - 修改 `.env` 中的 `DATABASE_URL` 即可
 
 ## 安全注意事项
-1. 生产环境必须修改默认的 `SECRET_KEY`
-2. 使用强密码作为管理员密码
-3. 定期备份数据库
-4. 配置防火墙限制访问
-5. 使用 HTTPS 加密传输
+1. 强制设置 `SECRET_KEY`（高熵随机），否则无法启动
+2. 管理员仅允许 `ADMIN_USERNAME` 登录；使用强密码并妥善保管
+3. 已启用全局 CSRF；AJAX 请求需带 `X-CSRFToken` 或 `csrf_token` 字段
+4. 定期备份数据库与上传目录
+5. 防火墙限制管理端暴露面；使用 HTTPS 加密传输

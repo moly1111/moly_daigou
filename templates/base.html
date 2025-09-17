@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Moly代购网站{% endblock %}</title>
+    <title>{% block title %}{{ site_title }}{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
@@ -82,7 +82,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="bi bi-shop"></i> Moly代购网站
+                <i class="bi bi-shop"></i> {{ site_title }}
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -145,6 +145,25 @@
     </nav>
 
     <main class="container mt-4">
+        <script>
+        // 为所有POST表单自动追加CSRF隐藏字段
+        document.addEventListener('DOMContentLoaded', function(){
+            try{
+                const token = '{{ csrf_token() if csrf_token is defined else "" }}';
+                if(token){
+                    document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(f=>{
+                        if(!f.querySelector('input[name="csrf_token"]')){
+                            const input = document.createElement('input');
+                            input.type = 'hidden';
+                            input.name = 'csrf_token';
+                            input.value = token;
+                            f.appendChild(input);
+                        }
+                    });
+                }
+            }catch(e){}
+        });
+        </script>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -161,7 +180,7 @@
 
     <footer class="bg-light mt-5 py-4">
         <div class="container text-center">
-            <p class="text-muted mb-0">&copy; {{ current_year }} Moly代购网站. 保留所有权利.</p>
+            <p class="text-muted mb-0">&copy; {{ current_year }} {{ site_title }}. {{ footer_text }}</p>
         </div>
         <div id="nowTime" style="position: fixed; right: 12px; bottom: 12px; background: rgba(0,0,0,.05); padding: 6px 10px; border-radius: 8px; font-size: 12px; color: #555;"></div>
     </footer>
@@ -280,10 +299,10 @@
             const lightbox = createLightbox();
             const lightboxImg = lightbox.querySelector('img');
             
-            // 为所有图片添加点击放大功能
+            // 为所有图片添加点击放大功能（缩略图 no-zoom 跳过）
             document.querySelectorAll('img').forEach(function(img) {
                 // 跳过已经是lightbox中的图片
-                if (img.closest('#image-lightbox')) return;
+                if (img.closest('#image-lightbox') || img.classList.contains('no-zoom')) return;
                 
                 img.style.cursor = 'zoom-in';
                 img.addEventListener('click', function() {
@@ -302,6 +321,7 @@
                 mutation.addedNodes.forEach(function(node) {
                     if (node.nodeType === 1) { // 元素节点
                         if (node.tagName === 'IMG') {
+                            if (node.classList.contains('no-zoom')) return;
                             node.style.cursor = 'zoom-in';
                             node.addEventListener('click', function() {
                                 const lightbox = document.getElementById('image-lightbox');
@@ -312,7 +332,7 @@
                         } else if (node.querySelectorAll) {
                             // 检查新添加的节点中的图片
                             node.querySelectorAll('img').forEach(function(img) {
-                                if (!img.closest('#image-lightbox')) {
+                                if (!img.closest('#image-lightbox') && !img.classList.contains('no-zoom')) {
                                     img.style.cursor = 'zoom-in';
                                     img.addEventListener('click', function() {
                                         const lightbox = document.getElementById('image-lightbox');

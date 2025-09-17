@@ -52,15 +52,19 @@
                                 <tr>
                                     <th>商品名称</th>
                                     <th>规格备注</th>
+                                    <th>单价</th>
                                     <th>数量</th>
+                                    <th>总价</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for item in order.items %}
                                 <tr>
                                     <td>{{ item.name }}</td>
-                                    <td>{{ item.spec_note or '-' }}</td>
+                                    <td>{{ item.variant_name or item.spec_note or '-' }}</td>
+                                    <td>¥{{ '%.2f'|format(item.unit_price or 0) }}</td>
                                     <td>{{ item.qty }}</td>
+                                    <td>¥{{ '%.2f'|format((item.unit_price or 0) * (item.qty or 0)) }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

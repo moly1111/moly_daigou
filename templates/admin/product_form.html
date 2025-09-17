@@ -18,7 +18,7 @@
                 </h6>
             </div>
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" id="productForm">
                     <div class="mb-3">
                         <label for="title" class="form-label">商品名称 *</label>
                         <input type="text" class="form-control" id="title" name="title" 
@@ -27,21 +27,69 @@
                         <div class="form-text">1-60个字符</div>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="price_rmb" class="form-label">价格 (RMB) *</label>
-                        <div class="input-group">
-                            <span class="input-group-text">¥</span>
-                            <input type="number" class="form-control" id="price_rmb" name="price_rmb" 
-                                   value="{{ "%.2f"|format(product.price_rmb) if product else '' }}" 
-                                   step="0.01" min="0" required>
-                        </div>
-                    </div>
+                    
 
                     <div class="mb-3">
                         <label for="note" class="form-label">商品备注</label>
                         <textarea class="form-control" id="note" name="note" rows="3" 
                                   maxlength="200">{{ product.note if product else '' }}</textarea>
                         <div class="form-text">最多200个字符</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label d-flex align-items-center">
+                          规格设置
+                          <span class="badge bg-light text-secondary ms-2">名称 / 展示价 / 购入价 / 图片</span>
+                        </label>
+                        <style>
+                          .variant-row{ background: var(--bs-light); border: 1px dashed var(--bs-border-color, #dee2e6); border-radius: .5rem; padding: .5rem .75rem; }
+                          .variant-row .form-control{ background-color: #fff; }
+                          .variant-head{ color: #6c757d; font-size: .85rem; }
+                        </style>
+                        <div class="row variant-head gx-2 mb-1 d-none d-md-flex">
+                          <div class="col-md-4">规格名称</div>
+                          <div class="col-md-3">展示价</div>
+                          <div class="col-md-3">购入价</div>
+                          <div class="col-md-2">图片 / 操作</div>
+                        </div>
+                        <div id="variantList">
+                            {% set vs = product.variants|from_json if product and product.variants else [] %}
+                            {% for v in vs %}
+                            <div class="row g-2 align-items-start mb-2 variant-row">
+                                <input type="hidden" name="v_idx" value="{{ loop.index0 }}">
+                                <input type="hidden" name="v_image_existing_{{ loop.index0 }}" value="{{ v.image if v.image else '' }}">
+                                <div class="col-md-4">
+                                    <input class="form-control" name="v_name" value="{{ v.name }}" placeholder="如：30ml / 礼盒装">
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="input-group">
+                                        <span class="input-group-text">¥</span>
+                                        <input type="number" class="form-control" name="v_price" value="{{ '%.2f'|format((product.price_rmb|float) + ((v.extra_price or 0)|float)) }}" step="0.01" placeholder="展示价">
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="input-group">
+                                        <span class="input-group-text">¥</span>
+                                        <input type="number" class="form-control" name="v_cost" value="{{ '%.2f'|format((product.cost_price_rmb or 0)|float) }}" step="0.01" placeholder="购入价">
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="file" class="form-control" name="v_image_{{ loop.index0 }}" accept="image/*">
+                                    <div class="d-flex justify-content-between align-items-center mt-1">
+                                        {% if v.image %}
+                                        <img src="{{ url_for('static', filename='uploads/' + v.image) }}" style="height:36px; width:36px; object-fit:cover;" class="img-thumbnail" title="规格图片">
+                                        {% endif %}
+                                        <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="removeVariant(this)">-</button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addVariant()">+ 添加规格</button>
+                        </div>
+                        <input type="hidden" name="variants_text" id="variants_text_hidden">
+                        <div class="form-text">每个规格：名称 + 展示价 + 购入价；提交时自动转换并保存。</div>
                     </div>
 
                     <div class="mb-3">
@@ -53,20 +101,36 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="images" class="form-label">商品图片</label>
-                        <input type="file" class="form-control" id="images" name="images" 
-                               multiple accept="image/*">
-                        <div class="form-text">支持jpg、png、webp格式，单张最大5MB，最多5张</div>
+                        <label class="form-label">商品图片</label>
+                        {% if product %}
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <input type="file" class="form-control" id="liveImageInput" accept="image/*" style="max-width: 280px;">
+                            <button type="button" class="btn btn-outline-primary" id="btnLiveAdd">添加图片</button>
+                        </div>
+                        <div class="form-text">支持jpg、png、webp格式，单张最大5MB。可直接添加，无需点击“更新商品”。</div>
+                        {% else %}
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <input type="file" class="form-control" id="liveImageInputNew" accept="image/*" style="max-width: 280px;" disabled>
+                            <button type="button" class="btn btn-outline-primary" id="btnLiveAddNew" disabled>添加图片</button>
+                        </div>
+                        <div class="alert alert-info py-2 mb-0">请先保存商品基础信息（点击“添加商品”）。保存成功后可在编辑页面使用“添加图片”实时上传。</div>
+                        {% endif %}
                     </div>
 
                     {% if product and product.images %}
                     <div class="mb-3">
                         <label class="form-label">当前图片</label>
-                        <div class="row">
+                        <div class="row" id="currentImagesRow">
                             {% for image_url in product.images|from_json %}
                             <div class="col-md-3 mb-2">
                                 <img src="{{ url_for('static', filename='uploads/' + image_url) }}" 
                                      class="img-thumbnail" style="width: 100%; height: 150px; object-fit: cover;">
+                                <div class="mt-1 text-center">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            formaction="{{ url_for('admin_product_delete_image', product_id=product.id) }}"
+                                            formmethod="POST" name="image_url" value="{{ image_url }}" formnovalidate
+                                            onclick="return confirm('删除该图片？')">删除</button>
+                                </div>
                             </div>
                             {% endfor %}
                         </div>
@@ -77,9 +141,18 @@
                         <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> 取消
                         </a>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> {{ '更新商品' if product else '添加商品' }}
-                        </button>
+                        <div class="d-flex gap-2">
+                          {% if product %}
+                          <button type="submit" class="btn btn-outline-danger" formmethod="POST"
+                                  formaction="{{ url_for('admin_product_delete', product_id=product.id) }}"
+                                  onclick="return confirm('确认删除该商品？此操作不可撤销！')">
+                            <i class="bi bi-trash"></i> 删除商品
+                          </button>
+                          {% endif %}
+                          <button type="submit" class="btn btn-primary" id="submitBtn">
+                              <i class="bi bi-check-circle"></i> {{ '更新商品' if product else '添加商品' }}
+                          </button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -96,7 +169,7 @@
                 <p class="text-muted small">简洁明了地描述商品，便于用户理解</p>
 
                 <h6>价格设置</h6>
-                <p class="text-muted small">设置合理的价格，支持小数点后两位</p>
+                <p class="text-muted small">支持设置展示价与购入价，便于统计利润</p>
 
                 <h6>商品备注</h6>
                 <p class="text-muted small">可添加商品规格、注意事项等信息</p>
@@ -115,7 +188,7 @@
 {% block extra_js %}
 <script>
 // 文件上传预览和验证
-document.getElementById('images').addEventListener('change', function(e) {
+document.getElementById('images')?.addEventListener('change', function(e) {
     const files = e.target.files;
     if (files.length > 5) {
         alert('最多只能上传5张图片');
@@ -131,5 +204,89 @@ document.getElementById('images').addEventListener('change', function(e) {
         }
     }
 });
+
+function addVariant(){
+  const container = document.getElementById('variantList');
+  const row = document.createElement('div');
+  row.className = 'row g-2 mb-2 variant-row';
+  const idx = document.querySelectorAll('#variantList .variant-row').length;
+  row.innerHTML = `
+    <input type="hidden" name="v_idx" value="${idx}">
+    <input type="hidden" name="v_image_existing" value="">
+    <div class="col-md-4">
+      <input class="form-control" name="v_name" placeholder="规格名称">
+    </div>
+    <div class="col-md-3">
+      <div class="input-group">
+        <span class="input-group-text">¥</span>
+        <input type="number" class="form-control" name="v_price" step="0.01" placeholder="展示价">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="input-group">
+        <span class="input-group-text">¥</span>
+        <input type="number" class="form-control" name="v_cost" step="0.01" placeholder="购入价">
+      </div>
+    </div>
+    <div class="col-md-2">
+      <input type="file" class="form-control" name="v_image_${idx}" accept="image/*">
+      <div class="d-flex justify-content-between align-items-center mt-1">
+        <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="removeVariant(this)">-</button>
+      </div>
+    </div>`;
+  container.appendChild(row);
+}
+
+function removeVariant(btn){
+  const row = btn.closest('.variant-row');
+  if(row) row.remove();
+}
+
+// 提交前将行数据序列化到 hidden 字段
+document.getElementById('productForm').addEventListener('submit', function(){
+  // 避免回车触发表格里的删除按钮等造成阻止
+  const btn = document.getElementById('submitBtn');
+  if(btn) btn.disabled = true; setTimeout(()=>{ if(btn) btn.disabled=false; }, 2000);
+  const rows = document.querySelectorAll('#variantList .variant-row');
+  const arr = [];
+  let base = Infinity;
+  rows.forEach(r => {
+    const name = r.querySelector('input[name="v_name"]').value.trim();
+    const price = parseFloat(r.querySelector('input[name="v_price"]').value || '');
+    const cost = parseFloat(r.querySelector('input[name="v_cost"]').value || '');
+    if(name){
+      if(isFinite(price)) base = Math.min(base, price);
+      arr.push({name, price: isFinite(price)?price:null, cost: isFinite(cost)?cost:null});
+    }
+  });
+  document.getElementById('variants_text_hidden').value = JSON.stringify(arr);
+});
 </script>
+{% if product %}
+<script>
+// 实时添加商品图片
+document.getElementById('btnLiveAdd')?.addEventListener('click', async function(){
+  const input = document.getElementById('liveImageInput');
+  const file = input?.files?.[0];
+  if(!file){ alert('请选择图片'); return; }
+  const fd = new FormData();
+  fd.append('image', file);
+  try{
+    const resp = await fetch('{{ url_for('admin_product_upload_image', product_id=product.id) }}', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if(!resp.ok || !data.ok){ alert(data.msg || '上传失败'); return; }
+    // 追加到图片列表
+    const row = document.createElement('div');
+    row.className = 'col-md-3 mb-2';
+    row.innerHTML = `
+      <img src="${data.url}" class="img-thumbnail" style="width: 100%; height: 150px; object-fit: cover;">
+      <div class="mt-1 text-center">
+        <button type="submit" class="btn btn-sm btn-outline-danger" formaction="{{ url_for('admin_product_delete_image', product_id=product.id) }}" formmethod="POST" name="image_url" value="${data.rel}" formnovalidate>删除</button>
+      </div>`;
+    document.querySelector('#currentImagesRow')?.appendChild(row);
+    input.value = '';
+  }catch(e){ alert('网络错误'); }
+});
+</script>
+{% endif %}
 {% endblock %}

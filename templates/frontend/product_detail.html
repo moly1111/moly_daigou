@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}{{ p.title }} - 代购网站{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-6">
+    {% if imgs %}
+      <img id="mainImg" src="{{ url_for('static', filename='uploads/' + imgs[0]) }}" class="img-fluid" style="width:100%; max-height:420px; object-fit:contain;" alt="product">
+      {% if imgs|length > 1 %}
+      <div class="d-flex gap-2 mt-2 flex-wrap">
+        {% for img in imgs %}
+        <img src="{{ url_for('static', filename='uploads/' + img) }}" class="img-thumbnail no-zoom" style="width:70px; height:70px; object-fit:cover; cursor:pointer;" onclick="setMainImg('{{ url_for('static', filename='uploads/' + img) }}')">
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="col-md-6">
+    <h4>{{ p.title }}</h4>
+    {% if p.note %}<p class="text-muted">{{ p.note }}</p>{% endif %}
+    <div class="mb-2">
+      <span id="unitPrice" data-base="{{ '%.2f'|format(p.price_rmb) }}" class="text-primary fw-bold">¥{{ '%.2f'|format(p.price_rmb) }}</span>
+    </div>
+
+    {% if variants %}
+    <div class="mb-3">
+      <label class="form-label">选择规格</label>
+      <div class="d-flex flex-wrap gap-2" id="variantGroup">
+        {% for v in variants %}
+        <label class="btn btn-outline-secondary btn-sm mb-0 variant-label">
+          <input type="radio" name="variant_name" class="btn-check variant-option" autocomplete="off" value="{{ v.name }}" data-extra="{{ '%.2f'|format(v.extra_price or 0) }}" data-image="{{ v.image or '' }}"> {{ v.name }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if p.status=='up' and is_user() %}
+    <form class="d-flex align-items-center gap-2" method="POST" action="{{ url_for('add_to_cart', product_id=p.id) }}" onsubmit="return bindVariant(this)">
+      <input type="hidden" name="variant_name" value="">
+      <input class="form-control" style="max-width:120px" type="number" name="qty" value="1" min="1">
+      <button class="btn btn-primary" type="submit"><i class="bi bi-cart-plus"></i> 加入购物车</button>
+    </form>
+    {% else %}
+    <div class="alert alert-secondary">该商品当前不可购买</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function bindVariant(form){
+  try{
+    const checked = document.querySelector('input[name="variant_name"]:checked');
+    if(checked){
+      form.querySelector('input[name="variant_name"]').value = checked.value;
+    }
+  }catch(e){}
+  return true;
+}
+
+function applyVariantImage(rel){
+  if(!rel) return;
+  const imgUrl = '{{ url_for('static', filename='uploads') }}' + '/' + rel;
+  const main = document.getElementById('mainImg');
+  if(main){ main.src = imgUrl; }
+}
+
+// 规格选中态与价格联动
+document.addEventListener('DOMContentLoaded', function(){
+  const baseEl = document.getElementById('unitPrice');
+  const base = parseFloat(baseEl?.dataset.base || '0');
+  let userChangedVariant = false;
+  // 记录概述图第一张，便于恢复
+  const firstImgEl = document.getElementById('mainImg');
+  const overviewFirstSrc = firstImgEl ? firstImgEl.getAttribute('src') : '';
+
+  function resetToOverview(){
+    // 取消选中规格，恢复价格与概述图
+    document.querySelectorAll('input[name="variant_name"]').forEach(r=>{ r.checked = false; });
+    document.querySelectorAll('#variantGroup .variant-label').forEach(l=>l.classList.remove('active'));
+    baseEl.textContent = '¥' + base.toFixed(2);
+    userChangedVariant = false;
+    if(firstImgEl && overviewFirstSrc){ firstImgEl.src = overviewFirstSrc; }
+  }
+  function recalc(){
+    const checked = document.querySelector('input[name="variant_name"]:checked');
+    document.querySelectorAll('#variantGroup .variant-label').forEach(l=>l.classList.remove('active'));
+    if(checked){
+      const extra = parseFloat(checked.getAttribute('data-extra') || '0');
+      const img = checked.getAttribute('data-image') || '';
+      baseEl.textContent = '¥' + (base + (isNaN(extra)?0:extra)).toFixed(2);
+      checked.closest('label')?.classList.add('active');
+      // 初次进入页面不自动切换概述图；仅在用户主动切换规格时切图
+      if(userChangedVariant && img){ applyVariantImage(img); }
+    } else {
+      baseEl.textContent = '¥' + base.toFixed(2);
+    }
+  }
+  const options = document.querySelectorAll('input[name="variant_name"]');
+  options.forEach(opt=>{
+    opt.addEventListener('change', ()=>{ userChangedVariant = true; recalc(); });
+  });
+  // 不默认选中，让用户选择后再切换图片
+  recalc();
+  
+});
+
+// 简易缩略图切换
+function setMainImg(url){
+  const main = document.getElementById('mainImg');
+  if(main){ main.src = url; }
+}
+</script>
+{% endblock %}
+
+
