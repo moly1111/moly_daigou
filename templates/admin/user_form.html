@@ -20,6 +20,16 @@
             <input type="email" class="form-control" name="email" value="{{ user.email }}" required>
           </div>
           <div class="mb-3">
+            <label class="form-label">用户名</label>
+            <input type="text" class="form-control" name="username" value="{{ user.username or '' }}" 
+                   pattern="[a-zA-Z0-9_]{3,20}" maxlength="20" placeholder="3-20位字母数字下划线">
+            <div class="form-text">设置后用户可使用用户名登录</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">备注</label>
+            <textarea class="form-control" name="notes" rows="3" placeholder="管理员备注信息">{{ user.notes or '' }}</textarea>
+          </div>
+          <div class="mb-3">
             <label class="form-label">账户状态</label>
             <div class="form-control-plaintext">
               {% if user.is_banned %}

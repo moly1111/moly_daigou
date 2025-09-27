@@ -59,7 +59,9 @@ login_manager.login_view = 'login'
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=True)  # 用户名，可为空
     password_hash = db.Column(db.String(128), nullable=False)
+    notes = db.Column(db.Text)  # 管理员备注
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime)
     is_banned = db.Column(db.Boolean, default=False)  # 用户封禁状态
@@ -558,6 +560,7 @@ def inject_role_helpers():
     cover = get_setting('cover_image')
     site_title = get_setting('site_title', 'Moly代购网站')
     footer_text = get_setting('footer_text', '保留所有权利.')
+    wechat_qr = get_setting('wechat_qr')
     return dict(
         is_admin=is_admin,
         is_user=is_user,
@@ -565,6 +568,7 @@ def inject_role_helpers():
         site_cover=cover,
         site_title=site_title,
         footer_text=footer_text,
+        wechat_qr=wechat_qr,
     )
 
 # 自动取消未支付订单的任务
@@ -647,18 +651,20 @@ def index():
       filter(Order.is_paid==True, OrderItem.product_id.isnot(None)).\
       group_by(OrderItem.product_id).all()
     sales_map = {row.pid: int(row.total_qty or 0) for row in sales_rows}
-    # 计算最低展示价（考虑规格加价）
+    # 优化：批量计算最低展示价，减少 JSON 解析次数
     min_price_map = {}
     for p in products:
         base = float(p.price_rmb)
-        try:
-            variants = json.loads(p.variants) if p.variants else []
-            if variants:
-                mins = [base + float(v.get('extra_price') or 0) for v in variants]
-                min_price_map[p.id] = min(mins)
-            else:
+        if p.variants:
+            try:
+                variants = json.loads(p.variants)
+                if variants:
+                    min_price_map[p.id] = min(base + float(v.get('extra_price') or 0) for v in variants)
+                else:
+                    min_price_map[p.id] = base
+            except (json.JSONDecodeError, ValueError, TypeError):
                 min_price_map[p.id] = base
-        except Exception:
+        else:
             min_price_map[p.id] = base
     return render_template('frontend/index.html', products=products, sales_map=sales_map, min_price_map=min_price_map)
 
@@ -886,9 +892,16 @@ def cart_checkout():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
+        email_or_username = request.form['email'].strip()
         password = request.form['password']
-        user = User.query.filter_by(email=email).first()
+        
+        # 判断是邮箱还是用户名
+        if '@' in email_or_username:
+            # 邮箱登录
+            user = User.query.filter_by(email=email_or_username).first()
+        else:
+            # 用户名登录
+            user = User.query.filter_by(username=email_or_username).first()
         
         if user and check_password_hash(user.password_hash, password):
             if user.is_banned:
@@ -900,7 +913,7 @@ def login():
                 db.session.commit()
                 return redirect(url_for('index'))
         else:
-            flash('邮箱或密码错误', 'error')
+            flash('邮箱/用户名或密码错误', 'error')
     
     return render_template('frontend/login.html')
 
@@ -908,6 +921,7 @@ def login():
 def register():
     if request.method == 'POST':
         email = request.form['email']
+        username = request.form.get('username', '').strip()
         password = request.form['password']
         code = request.form.get('code', '')
 
@@ -918,6 +932,17 @@ def register():
         if User.query.filter_by(email=email).first():
             flash('该邮箱已被注册', 'error')
             return render_template('frontend/register.html')
+
+        # 验证用户名（如果提供）
+        if username:
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
+                flash('用户名只能包含字母、数字和下划线，长度3-20位', 'error')
+                return render_template('frontend/register.html')
+            
+            if User.query.filter_by(username=username).first():
+                flash('该用户名已被使用', 'error')
+                return render_template('frontend/register.html')
 
         # 校验验证码
         ver = EmailVerification.query.filter_by(email=email, code=code, used=False).order_by(EmailVerification.id.desc()).first()
@@ -931,6 +956,7 @@ def register():
 
         user = User(
             email=email,
+            username=username if username else None,
             password_hash=generate_password_hash(password)
         )
         db.session.add(user)
@@ -1150,31 +1176,53 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     
-    # 订单/用户/商品汇总
-    total_orders = Order.query.count()
-    paid_orders = Order.query.filter_by(is_paid=True).count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    processing_orders = Order.query.filter_by(status='processing').count()
-    total_users = User.query.count()
-    banned_users = User.query.filter_by(is_banned=True).count()
-    product_count = Product.query.count()
-
-    # 收入与待收：同时提供应收与实收口径
+    # 优化：分别查询不同表的统计，避免复杂的多表连接
     from sqlalchemy import func as SAfunc
-    revenue_total_due = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==True).scalar() or 0
-    revenue_total_paid = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_paid), 0)).filter(Order.is_paid==True).scalar() or 0
-    receivable_pending = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==False).scalar() or 0
+    
+    # 订单统计
+    order_stats = db.session.query(
+        SAfunc.count(Order.id).label('total_orders'),
+        SAfunc.count(Order.id).filter(Order.is_paid==True).label('paid_orders'),
+        SAfunc.count(Order.id).filter(Order.status=='pending').label('pending_orders'),
+        SAfunc.count(Order.id).filter(Order.status=='processing').label('processing_orders')
+    ).first()
+    
+    # 用户统计
+    user_stats = db.session.query(
+        SAfunc.count(User.id).label('total_users'),
+        SAfunc.count(User.id).filter(User.is_banned==True).label('banned_users')
+    ).first()
+    
+    # 商品统计
+    product_count = Product.query.count()
+    
+    total_orders = order_stats.total_orders or 0
+    paid_orders = order_stats.paid_orders or 0
+    pending_orders = order_stats.pending_orders or 0
+    processing_orders = order_stats.processing_orders or 0
+    total_users = user_stats.total_users or 0
+    banned_users = user_stats.banned_users or 0
 
-    # 今日统计（按UTC存储，直接比较日期）
+    # 收入统计（分别查询，避免 SQLite FILTER 问题）
     today = datetime.utcnow().date()
     today_start = datetime(today.year, today.month, today.day)
+    
+    # 已付款订单的收入统计
+    paid_orders = Order.query.filter_by(is_paid=True)
+    revenue_total_due = float(paid_orders.with_entities(SAfunc.sum(Order.amount_due)).scalar() or 0)
+    revenue_total_paid = float(paid_orders.with_entities(SAfunc.sum(Order.amount_paid)).scalar() or 0)
+    
+    # 未付款订单的应收统计
+    receivable_pending = float(Order.query.filter_by(is_paid=False).with_entities(SAfunc.sum(Order.amount_due)).scalar() or 0)
+    
+    # 今日统计
     today_orders = Order.query.filter(Order.created_at >= today_start).count()
-    today_revenue_due = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_due), 0)).filter(Order.is_paid==True, Order.paid_at>=today_start).scalar() or 0
-    today_revenue_paid = db.session.query(SAfunc.coalesce(SAfunc.sum(Order.amount_paid), 0)).filter(Order.is_paid==True, Order.paid_at>=today_start).scalar() or 0
+    today_revenue_due = float(paid_orders.filter(Order.paid_at >= today_start).with_entities(SAfunc.sum(Order.amount_due)).scalar() or 0)
+    today_revenue_paid = float(paid_orders.filter(Order.paid_at >= today_start).with_entities(SAfunc.sum(Order.amount_paid)).scalar() or 0)
 
-    # 未读消息（来自用户）
+    # 未读消息和热销商品（并行查询）
     unread_user_msgs = ChatMessage.query.filter_by(sender='user', is_read_by_admin=False).count()
-
+    
     # Top5 商品销量（已付款订单）
     top_rows = db.session.query(
         Product.title, SAfunc.coalesce(SAfunc.sum(OrderItem.qty),0).label('qty')
@@ -1231,19 +1279,22 @@ def admin_products():
         outerjoin(sub_orders, Product.id==sub_orders.c.pid).\
         order_by(db.desc(Product.pinned), status_order.asc(), Product.updated_at.desc()).all()
 
+    # 优化：批量查询所有商品的利润，避免 N+1 查询
+    product_ids = [p.id for p, _, _ in rows]
+    profit_data = {}
+    if product_ids:
+        profit_rows = db.session.query(
+            OrderItem.product_id,
+            func.sum((OrderItem.unit_price - OrderItem.unit_cost) * OrderItem.qty).label('total_profit')
+        ).join(Order, OrderItem.order_id==Order.id).\
+          filter(OrderItem.product_id.in_(product_ids), Order.is_paid==True).\
+          group_by(OrderItem.product_id).all()
+        profit_data = {row.product_id: float(row.total_profit or 0) for row in profit_rows}
+
     enriched = []
     total_profit_all = 0.0
     for p, order_count, total_qty in rows:
-        # 利润采用已付款订单项的历史单价/单成本汇总，避免改价回溯
-        paid_items = db.session.query(OrderItem.qty, OrderItem.unit_price, OrderItem.unit_cost).\
-            join(Order, OrderItem.order_id==Order.id).\
-            filter(OrderItem.product_id==p.id, Order.is_paid==True).all()
-        profit = 0.0
-        for qty, up, uc in paid_items:
-            try:
-                profit += float((up or 0)) * int(qty or 0) - float((uc or 0)) * int(qty or 0)
-            except Exception:
-                pass
+        profit = profit_data.get(p.id, 0.0)
         total_profit_all += profit
         enriched.append({
             'product': p,
@@ -1268,7 +1319,9 @@ def admin_users():
 def admin_user_new():
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
+        username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
+        notes = request.form.get('notes', '').strip()
         name = request.form.get('name', '').strip()
         phone = request.form.get('phone', '').strip()
         address_text = request.form.get('address_text', '').strip()
@@ -1284,7 +1337,23 @@ def admin_user_new():
             flash('该邮箱已被注册', 'error')
             return render_template('admin/user_new.html', form=request.form)
 
-        user = User(email=email, password_hash=generate_password_hash(password))
+        # 验证用户名（如果提供）
+        if username:
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
+                flash('用户名只能包含字母、数字和下划线，长度3-20位', 'error')
+                return render_template('admin/user_new.html', form=request.form)
+            
+            if User.query.filter_by(username=username).first():
+                flash('该用户名已被使用', 'error')
+                return render_template('admin/user_new.html', form=request.form)
+
+        user = User(
+            email=email,
+            username=username if username else None,
+            password_hash=generate_password_hash(password),
+            notes=notes if notes else None
+        )
         db.session.add(user)
         db.session.flush()
 
@@ -1312,7 +1381,10 @@ def admin_user_edit(user_id: int):
     user = User.query.get_or_404(user_id)
     if request.method == 'POST':
         email = request.form['email'].strip()
+        username = request.form.get('username', '').strip()
+        notes = request.form.get('notes', '').strip()
         new_password = request.form.get('password', '').strip()
+        
         if not is_valid_email(email):
             flash('邮箱格式不正确', 'error')
             return render_template('admin/user_form.html', user=user)
@@ -1320,7 +1392,22 @@ def admin_user_edit(user_id: int):
         if exists:
             flash('该邮箱已被使用', 'error')
             return render_template('admin/user_form.html', user=user)
+        
+        # 验证用户名（如果提供）
+        if username:
+            import re
+            if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
+                flash('用户名只能包含字母、数字和下划线，长度3-20位', 'error')
+                return render_template('admin/user_form.html', user=user)
+            
+            exists_username = User.query.filter(User.username == username, User.id != user.id).first()
+            if exists_username:
+                flash('该用户名已被使用', 'error')
+                return render_template('admin/user_form.html', user=user)
+        
         user.email = email
+        user.username = username if username else None
+        user.notes = notes if notes else None
         if new_password:
             user.password_hash = generate_password_hash(new_password)
         db.session.commit()
@@ -2080,16 +2167,21 @@ def admin_basic_settings():
         title = request.form.get('site_title', '').strip() or 'Moly代购网站'
         footer = request.form.get('footer_text', '').strip() or '保留所有权利.'
         cover = request.form.get('cover_image', '')
+        wechat_qr = request.form.get('wechat_qr', '')
+        
         set_setting('site_title', title)
         set_setting('footer_text', footer)
         if cover:
             set_setting('cover_image', cover)
+        if wechat_qr:
+            set_setting('wechat_qr', wechat_qr)
         flash('基础设定已保存', 'success')
         return redirect(url_for('admin_basic_settings'))
     return render_template('admin/basic_settings.html',
                            site_title=get_setting('site_title', 'Moly代购网站'),
                            footer_text=get_setting('footer_text', '保留所有权利.'),
-                           cover_image=get_setting('cover_image'))
+                           cover_image=get_setting('cover_image'),
+                           wechat_qr=get_setting('wechat_qr'))
 
 @app.route('/admin/settings/cover', methods=['POST'])
 @admin_required
@@ -2109,6 +2201,25 @@ def admin_update_cover():
     else:
         flash('未选择文件', 'error')
     return redirect(url_for('admin_settings'))
+
+@app.route('/admin/settings/wechat-qr', methods=['POST'])
+@admin_required
+def admin_update_wechat_qr():
+    if 'wechat_qr' in request.files:
+        file = request.files['wechat_qr']
+        if file and file.filename and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+            filename = timestamp + filename
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'qrcodes', filename)
+            file.save(filepath)
+            set_setting('wechat_qr', f'qrcodes/{filename}')
+            flash('微信二维码已更新', 'success')
+        else:
+            flash('请选择有效的图片文件', 'error')
+    else:
+        flash('未选择文件', 'error')
+    return redirect(url_for('admin_basic_settings'))
 
 @app.route('/admin/settings/payment-qrcodes', methods=['POST'])
 @admin_required
@@ -2275,6 +2386,39 @@ if __name__ == '__main__':
                 db.session.commit()
         except Exception as e:
             print('检查/添加列 variant_name 失败: ', e)
+
+        # 旧库自动迁移：为 User 添加 username 和 notes 列
+        try:
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols_user = [c['name'] for c in insp.get_columns('user')]
+            if 'username' not in cols_user:
+                db.session.execute(text('ALTER TABLE user ADD COLUMN username VARCHAR(50) UNIQUE'))
+                db.session.commit()
+                print('已添加 username 列到 user 表')
+            if 'notes' not in cols_user:
+                db.session.execute(text('ALTER TABLE user ADD COLUMN notes TEXT'))
+                db.session.commit()
+                print('已添加 notes 列到 user 表')
+        except Exception as e:
+            print('检查/添加列 username/notes 失败: ', e)
+
+        # 添加性能优化索引
+        try:
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_is_paid ON "order"(is_paid)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_status ON "order"(status)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_created_at ON "order"(created_at)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_paid_at ON "order"(paid_at)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_item_product_id ON order_item(product_id)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_order_item_order_id ON order_item(order_id)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_product_status ON product(status)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_product_pinned ON product(pinned)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_chat_message_sender ON chat_message(sender)'))
+            db.session.execute(text('CREATE INDEX IF NOT EXISTS idx_chat_message_is_read ON chat_message(is_read_by_admin)'))
+            db.session.commit()
+            print('已添加性能优化索引')
+        except Exception as idx_error:
+            print(f'添加索引时出现错误（可忽略）: {idx_error}')
         
         # 创建或更新管理员账户（强制要求从环境注入，禁止默认值）
         admin_username = _require_env('ADMIN_USERNAME')

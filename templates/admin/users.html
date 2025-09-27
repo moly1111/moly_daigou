@@ -19,6 +19,8 @@
           <tr>
             <th>ID</th>
             <th>邮箱</th>
+            <th>用户名</th>
+            <th>备注</th>
             <th>状态</th>
             <th>注册时间</th>
             <th>最后登录</th>
@@ -30,6 +32,16 @@
           <tr {% if u.is_banned %}class="table-danger"{% endif %}>
             <td>{{ u.id }}</td>
             <td>{{ u.email }}</td>
+            <td>{{ u.username or '-' }}</td>
+            <td>
+              {% if u.notes %}
+                <span class="text-truncate d-inline-block" style="max-width: 100px;" title="{{ u.notes }}">
+                  {{ u.notes[:20] }}{% if u.notes|length > 20 %}...{% endif %}
+                </span>
+              {% else %}
+                -
+              {% endif %}
+            </td>
             <td>
               {% if u.is_banned %}
                 <span class="badge bg-danger">已封禁</span>

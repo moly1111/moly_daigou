@@ -28,12 +28,43 @@
           <div class="mb-3">
             <label class="form-label">封面图片（路径）</label>
             <input class="form-control" name="cover_image" value="{{ cover_image or '' }}" placeholder="如：covers/xxxx.jpg">
-            <div class="form-text">也可在“系统设置”中通过文件上传更新封面。</div>
+            <div class="form-text">也可在"系统设置"中通过文件上传更新封面。</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">微信二维码（路径）</label>
+            <input class="form-control" name="wechat_qr" value="{{ wechat_qr or '' }}" placeholder="如：qrcodes/xxxx.jpg">
+            <div class="form-text">显示在主页的微信二维码，支持文件上传。</div>
           </div>
           <div class="text-end">
             <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> 保存</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow mb-4">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">文件上传</h6>
+      </div>
+      <div class="card-body">
+        <!-- 微信二维码上传 -->
+        <div class="mb-4">
+          <h6 class="text-secondary">微信二维码</h6>
+          {% if wechat_qr %}
+          <div class="mb-2">
+            <img src="{{ url_for('static', filename='uploads/' + wechat_qr) }}" class="img-fluid rounded" style="max-width: 200px;">
+          </div>
+          {% endif %}
+          <form method="POST" action="{{ url_for('admin_update_wechat_qr') }}" enctype="multipart/form-data">
+            <div class="mb-2">
+              <input type="file" class="form-control" name="wechat_qr" accept="image/*">
+            </div>
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+              <i class="bi bi-upload"></i> 上传微信二维码
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

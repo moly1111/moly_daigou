@@ -17,7 +17,11 @@
                 <div class="card h-100 {% if p.status=='down' %}opacity-50{% endif %}">
                     {% set imgs = p.images|from_json %}
                     {% if imgs and imgs[0] %}
-                    <img src="{{ url_for('static', filename='uploads/' + imgs[0]) }}" class="card-img-top" style="height: 160px; object-fit: cover;">
+                    <img src="{{ url_for('static', filename='uploads/' + imgs[0]) }}" 
+                         class="card-img-top product-image" 
+                         style="height: 160px; object-fit: cover;"
+                         loading="lazy"
+                         alt="{{ p.title }}">
                     {% endif %}
                     <div class="card-body">
                         <h6 class="card-title">{{ p.title }}</h6>
@@ -45,6 +49,29 @@
         {% endif %}
     </div>
 </div>
+
+<!-- 微信二维码显示区域 -->
+{% if wechat_qr %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">
+                    <i class="bi bi-wechat text-success"></i> 联系我们
+                </h5>
+                <p class="card-text text-muted">扫描二维码添加微信，获取更多代购信息</p>
+                <div class="d-flex justify-content-center">
+                    <img src="{{ url_for('static', filename='uploads/' + wechat_qr) }}" 
+                         class="img-fluid rounded shadow" 
+                         style="max-width: 200px; height: auto;" 
+                         alt="微信二维码">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if (not current_user.is_authenticated) and site_cover %}
 <!-- 封面弹窗（未登录时显示，可关闭） -->
 <div class="modal fade" id="coverModal" tabindex="-1" aria-hidden="true">
