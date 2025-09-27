@@ -1179,29 +1179,18 @@ def admin_dashboard():
     # 优化：分别查询不同表的统计，避免复杂的多表连接
     from sqlalchemy import func as SAfunc
     
-    # 订单统计
-    order_stats = db.session.query(
-        SAfunc.count(Order.id).label('total_orders'),
-        SAfunc.count(Order.id).filter(Order.is_paid==True).label('paid_orders'),
-        SAfunc.count(Order.id).filter(Order.status=='pending').label('pending_orders'),
-        SAfunc.count(Order.id).filter(Order.status=='processing').label('processing_orders')
-    ).first()
+    # 订单统计（分别查询避免SQLite FILTER问题）
+    total_orders = Order.query.count()
+    paid_orders = Order.query.filter_by(is_paid=True).count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    processing_orders = Order.query.filter_by(status='processing').count()
     
-    # 用户统计
-    user_stats = db.session.query(
-        SAfunc.count(User.id).label('total_users'),
-        SAfunc.count(User.id).filter(User.is_banned==True).label('banned_users')
-    ).first()
+    # 用户统计（分别查询避免SQLite FILTER问题）
+    total_users = User.query.count()
+    banned_users = User.query.filter_by(is_banned=True).count()
     
     # 商品统计
     product_count = Product.query.count()
-    
-    total_orders = order_stats.total_orders or 0
-    paid_orders = order_stats.paid_orders or 0
-    pending_orders = order_stats.pending_orders or 0
-    processing_orders = order_stats.processing_orders or 0
-    total_users = user_stats.total_users or 0
-    banned_users = user_stats.banned_users or 0
 
     # 收入统计（分别查询，避免 SQLite FILTER 问题）
     today = datetime.utcnow().date()
