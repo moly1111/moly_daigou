@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  moly_daigou:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - ./static/uploads:/app/static/uploads
+      - ./instance:/app/instance
+    restart: unless-stopped

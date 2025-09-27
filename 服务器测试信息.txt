@@ -1,0 +1,55 @@
+
+
+(venv) root@C20250917208044:/opt/moly_daigou# # 1. 进入项目目录
+cd /opt/moly_daigou
+source venv/bin/activate
+
+# 2. 检查PostgreSQL状态
+sudo systemctl status postgresql
+
+# 3. 添加缺少的列（使用正确的语法）
+python3 -c "
+from app import app, db
+with app.app_context():
+    try:
+        db.session.execute(db.text('ALTER TABLE \"user\" ADD COLUMN username VARCHAR(20);'))
+        db.session.commit()
+        print('✅ 成功添加username列')
+    except Exception as e:
+        print(f'username列可能已存在: {e}')
+
+    try:
+        db.session.execute(db.text('ALTER TABLE \"user\" ADD COLUMN notes TEXT;'))
+        db.session.commit()
+        print('✅ 成功添加notes列')
+    except Exception as e:
+        print(f'notes列可能已存在: {e}')
+"
+
+# 4. 重启Gunicorn
+sudo pkill -9 -f gunicorn
+sleep 5
+nohup gunicorn --workers 1 --threads 8 --worker-class gthread --timeout 60 --keep-alive 5 --bind 0.0.0.0:8080 app:app > app.log 2>&1 &
+
+# 5. 等待启动
+sleep 10
+
+# 6. 测试
+curl -I http://localhost:8080/admin
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/lib/systemd/system/postgresql.service; enabled; vendor preset: e>
+     Active: active (exited) since Wed 2025-09-17 16:38:44 UTC; 1 week 2 days ago
+   Main PID: 6305 (code=exited, status=0/SUCCESS)
+        CPU: 2ms
+
+Sep 17 16:38:44 C20250917208044 systemd[1]: Starting PostgreSQL RDBMS...
+Sep 17 16:38:44 C20250917208044 systemd[1]: Finished PostgreSQL RDBMS.
+...skipping...
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/lib/systemd/system/postgresql.service; enabled; vendor preset: e>
+     Active: active (exited) since Wed 2025-09-17 16:38:44 UTC; 1 week 2 days ago
+   Main PID: 6305 (code=exited, status=0/SUCCESS)
+        CPU: 2ms
+
+Sep 17 16:38:44 C20250917208044 systemd[1]: Starting PostgreSQL RDBMS...
+Sep 17 16:38:44 C20250917208044 systemd[1]: Finished PostgreSQL RDBMS.

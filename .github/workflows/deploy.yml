@@ -1,0 +1,30 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        script: |
+          # 进入项目目录
+          cd /var/www/moly_daigou || mkdir -p /var/www/moly_daigou && cd /var/www/moly_daigou
+          
+          # 拉取最新代码
+          git pull origin main
+          
+          # 安装依赖
+          pip install -r requirements.txt
+          
+          # 重启服务
+          sudo systemctl restart moly_daigou
+          sudo systemctl restart nginx
