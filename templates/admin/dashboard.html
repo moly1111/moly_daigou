@@ -87,33 +87,33 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_new_order') }}" class="btn btn-primary btn-lg w-100">
+                        <a href="{{ url_for('admin.admin_new_order') }}" class="btn btn-primary btn-lg w-100">
                             <i class="bi bi-plus-circle"></i> 创建新订单
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_new_product') }}" class="btn btn-success btn-lg w-100">
+                        <a href="{{ url_for('admin.admin_new_product') }}" class="btn btn-success btn-lg w-100">
                             <i class="bi bi-box"></i> 添加商品
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_basic_settings') }}" class="btn btn-outline-secondary btn-lg w-100">
+                        <a href="{{ url_for('admin.admin_basic_settings') }}" class="btn btn-outline-secondary btn-lg w-100">
                             <i class="bi bi-gear"></i> 基础设定
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_orders') }}" class="btn btn-info btn-lg w-100">
+                        <a href="{{ url_for('admin.admin_orders') }}" class="btn btn-info btn-lg w-100">
                             <i class="bi bi-list-ul"></i> 查看所有订单
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_products') }}" class="btn btn-outline-success btn-lg w-100">
+                        <a href="{{ url_for('admin.admin_products') }}" class="btn btn-outline-success btn-lg w-100">
                             <i class="bi bi-box-seam"></i> 商品管理（{{ product_count }}）
                         </a>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <a href="{{ url_for('admin_purchase_preview') }}" class="btn btn-warning btn-lg w-100">
-                            <i class="bi bi-download"></i> 采购清单
+                        <a href="{{ url_for('admin.admin_purchase_preview') }}" class="btn btn-warning btn-lg w-100">
+                            <i class="bi bi-download"></i> 发货清单
                         </a>
                     </div>
                 </div>
@@ -158,7 +158,7 @@
                 {% if current_version %}
                 <hr>
                 <div class="text-center">
-                    <a href="{{ url_for('admin_versions') }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('admin.admin_versions') }}" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-tags"></i> 版本管理
                     </a>
                 </div>

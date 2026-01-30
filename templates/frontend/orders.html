@@ -15,23 +15,23 @@
                 <!-- 筛选按钮 -->
                 <div class="mb-3">
                     <div class="btn-group" role="group">
-                        <a href="{{ url_for('orders', status='all') }}" 
+                        <a href="{{ url_for('frontend.orders', status='all') }}" 
                            class="btn btn-outline-primary {{ 'active' if current_filter == 'all' else '' }}">
                             全部
                         </a>
-                        <a href="{{ url_for('orders', status='pending') }}" 
+                        <a href="{{ url_for('frontend.orders', status='pending') }}" 
                            class="btn btn-outline-warning {{ 'active' if current_filter == 'pending' else '' }}">
                             待支付
                         </a>
-                        <a href="{{ url_for('orders', status='processing') }}" 
+                        <a href="{{ url_for('frontend.orders', status='processing') }}" 
                            class="btn btn-outline-info {{ 'active' if current_filter == 'processing' else '' }}">
                             处理中
                         </a>
-                        <a href="{{ url_for('orders', status='done') }}" 
+                        <a href="{{ url_for('frontend.orders', status='done') }}" 
                            class="btn btn-outline-success {{ 'active' if current_filter == 'done' else '' }}">
                             已完成
                         </a>
-                        <a href="{{ url_for('orders', status='canceled') }}" 
+                        <a href="{{ url_for('frontend.orders', status='canceled') }}" 
                            class="btn btn-outline-danger {{ 'active' if current_filter == 'canceled' else '' }}">
                             已取消
                         </a>
@@ -80,12 +80,12 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <a href="{{ url_for('order_detail', order_no=order.order_no) }}" 
+                                    <a href="{{ url_for('frontend.order_detail', order_no=order.order_no) }}" 
                                        class="btn btn-sm btn-outline-primary me-1">
                                         <i class="bi bi-eye"></i> 详情
                                     </a>
                                     {% if order.status in ['pending','processing'] %}
-                                    <form method="POST" action="{{ url_for('cancel_order', order_no=order.order_no) }}" style="display:inline" onsubmit="return confirm('确认取消该订单？')">
+                                    <form method="POST" action="{{ url_for('frontend.cancel_order', order_no=order.order_no) }}" style="display:inline" onsubmit="return confirm('确认取消该订单？')">
                                         <button class="btn btn-sm btn-outline-danger" type="submit">
                                             <i class="bi bi-x-circle"></i> 取消
                                         </button>

@@ -7,7 +7,7 @@
   <div class="col-12">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="mb-0"><i class="bi bi-cart"></i> 我的购物车</h4>
-      <a href="{{ url_for('orders') }}" class="btn btn-primary btn-sm"><i class="bi bi-list-ul"></i> 我的订单</a>
+      <a href="{{ url_for('frontend.orders') }}" class="btn btn-primary btn-sm"><i class="bi bi-list-ul"></i> 我的订单</a>
     </div>
 
     {% if cart_items %}
@@ -41,13 +41,13 @@
             </td>
             <td>
               <div class="d-flex align-items-center gap-2 flex-nowrap">
-                <input class="form-control form-control-sm qty-input" type="number" name="qty" value="{{ item.qty }}" min="1" style="width: 90px; min-width: 90px;" data-update-url="{{ url_for('update_cart', item_id=item.id) }}" {% if product.status!='up' %}disabled{% endif %}>
+                <input class="form-control form-control-sm qty-input" type="number" name="qty" value="{{ item.qty }}" min="1" style="width: 90px; min-width: 90px;" data-update-url="{{ url_for('frontend.update_cart', item_id=item.id) }}" {% if product.status!='up' %}disabled{% endif %}>
               </div>
             </td>
             <td data-price="{{ '%.2f'|format(unit) }}">¥{{ "%.2f"|format(unit) }}</td>
             <td class="row-subtotal">¥{{ "%.2f"|format(subtotal) }}</td>
             <td>
-              <form method="POST" action="{{ url_for('remove_cart', item_id=item.id) }}">
+              <form method="POST" action="{{ url_for('frontend.remove_cart', item_id=item.id) }}">
                 <button class="btn btn-sm btn-outline-danger" type="submit">移除</button>
               </form>
             </td>
@@ -144,7 +144,7 @@ document.getElementById('checkoutBtn')?.addEventListener('click', () => {
   }
   const form = document.createElement('form');
   form.method = 'POST';
-  form.action = '{{ url_for('cart_checkout') }}';
+  form.action = '{{ url_for('frontend.cart_checkout') }}';
   ids.forEach(id => {
     const input = document.createElement('input');
     input.type = 'hidden';

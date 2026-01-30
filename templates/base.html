@@ -124,7 +124,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
+            <a class="navbar-brand" href="{{ url_for('frontend.index') }}">
                 <i class="bi bi-shop"></i> {{ site_title }}
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -134,22 +134,22 @@
                 <ul class="navbar-nav me-auto">
                     {% if current_user.is_authenticated and is_user() %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('orders') }}">
+                            <a class="nav-link" href="{{ url_for('frontend.orders') }}">
                                 <i class="bi bi-list-ul"></i> 我的订单
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('profile_address') }}">
+                            <a class="nav-link" href="{{ url_for('frontend.profile_address') }}">
                                 <i class="bi bi-geo-alt"></i> 收货地址
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('cart_page') }}">
+                            <a class="nav-link" href="{{ url_for('frontend.cart_page') }}">
                                 <i class="bi bi-cart"></i> 购物车
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('chat_page') }}">
+                            <a class="nav-link" href="{{ url_for('chat.chat_page') }}">
                                 <i class="bi bi-chat-dots"></i> 聊天
                             </a>
                         </li>
@@ -165,19 +165,19 @@
                                 <i class="bi bi-person-circle"></i> {% if is_admin() %}管理员{% else %}{{ current_user.email }}{% endif %}
                             </a>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <li><a class="dropdown-item" href="{{ url_for('frontend.logout') }}">
                                     <i class="bi bi-box-arrow-right"></i> 退出登录
                                 </a></li>
                             </ul>
                         </li>
                     {% else %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">
+                            <a class="nav-link" href="{{ url_for('frontend.login') }}">
                                 <i class="bi bi-box-arrow-in-right"></i> 登录
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">
+                            <a class="nav-link" href="{{ url_for('frontend.register') }}">
                                 <i class="bi bi-person-plus"></i> 注册
                             </a>
                         </li>
@@ -239,7 +239,7 @@
     // 全站未读消息轮询提醒（用户端），在聊天页面内抑制弹窗
     setInterval(async () => {
         try {
-            const res = await fetch('{{ url_for('api_chat_unread') }}', { credentials: 'same-origin' });
+            const res = await fetch('{{ url_for('chat.api_chat_unread') }}', { credentials: 'same-origin' });
             if(!res.ok) return;
             const data = await res.json();
             if (data.role === 'user' && data.unread > 0 && !window.__suppressGlobalChatAlert) {

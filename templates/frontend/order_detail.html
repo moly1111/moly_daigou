@@ -102,7 +102,7 @@
                 {% if order.status == 'pending' %}
                 <div class="mb-4">
                     <h6>上传付款截图</h6>
-                    <form method="POST" action="{{ url_for('upload_payment_attachments', order_no=order.order_no) }}" 
+                    <form method="POST" action="{{ url_for('frontend.upload_payment_attachments', order_no=order.order_no) }}" 
                           enctype="multipart/form-data">
                         <div class="mb-3">
                             <label for="images" class="form-label">付款截图</label>

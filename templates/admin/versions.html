@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-tags"></i> 版本管理</h2>
-    <a href="{{ url_for('admin_new_version') }}" class="btn btn-primary">
+    <a href="{{ url_for('admin.admin_new_version') }}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> 添加新版本
     </a>
 </div>
@@ -49,12 +49,12 @@
                                     <i class="bi bi-eye"></i> 查看详情
                                 </button>
                                 {% if not version.is_current %}
-                                <a href="{{ url_for('admin_set_current_version', version_id=version.id) }}" 
+                                <a href="{{ url_for('admin.admin_set_current_version', version_id=version.id) }}" 
                                    class="btn btn-sm btn-outline-warning"
                                    onclick="return confirm('确定要设置此版本为当前版本吗？')">
                                     <i class="bi bi-check-circle"></i> 设为当前
                                 </a>
-                                <a href="{{ url_for('admin_delete_version', version_id=version.id) }}" 
+                                <a href="{{ url_for('admin.admin_delete_version', version_id=version.id) }}" 
                                    class="btn btn-sm btn-outline-danger"
                                    onclick="return confirm('确定要删除此版本吗？')">
                                     <i class="bi bi-trash"></i> 删除

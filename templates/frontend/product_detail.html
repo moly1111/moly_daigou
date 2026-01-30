@@ -28,8 +28,9 @@
       <label class="form-label">选择规格</label>
       <div class="d-flex flex-wrap gap-2" id="variantGroup">
         {% for v in variants %}
-        <label class="btn btn-outline-secondary btn-sm mb-0 variant-label">
-          <input type="radio" name="variant_name" class="btn-check variant-option" autocomplete="off" value="{{ v.name }}" data-extra="{{ '%.2f'|format(v.extra_price or 0) }}" data-image="{{ v.image or '' }}"> {{ v.name }}
+        {% set stock_num = v.stock|default(0) %}
+        <label class="btn btn-outline-secondary btn-sm mb-0 variant-label {% if stock_num <= 0 %}disabled{% endif %}">
+          <input type="radio" name="variant_name" class="btn-check variant-option" autocomplete="off" value="{{ v.name }}" data-variant-id="{{ v.id|default('') }}" data-extra="{{ '%.2f'|format(v.extra_price or 0) }}" data-image="{{ v.image or '' }}" {% if stock_num <= 0 %}disabled{% endif %}> {{ v.name }}{% if stock_num <= 0 %}（缺货）{% else %}（库存 {{ stock_num }}）{% endif %}
         </label>
         {% endfor %}
       </div>
@@ -37,8 +38,9 @@
     {% endif %}
 
     {% if p.status=='up' and is_user() %}
-    <form class="d-flex align-items-center gap-2" method="POST" action="{{ url_for('add_to_cart', product_id=p.id) }}" onsubmit="return bindVariant(this)">
+    <form class="d-flex align-items-center gap-2" method="POST" action="{{ url_for('frontend.add_to_cart', product_id=p.id) }}" onsubmit="return bindVariant(this)">
       <input type="hidden" name="variant_name" value="">
+      <input type="hidden" name="variant_id" value="">
       <input class="form-control" style="max-width:120px" type="number" name="qty" value="1" min="1">
       <button class="btn btn-primary" type="submit"><i class="bi bi-cart-plus"></i> 加入购物车</button>
     </form>
@@ -54,8 +56,11 @@
 function bindVariant(form){
   try{
     const checked = document.querySelector('input[name="variant_name"]:checked');
+    const variantNameInput = form.querySelector('input[name="variant_name"]');
+    const variantIdInput = form.querySelector('input[name="variant_id"]');
     if(checked){
-      form.querySelector('input[name="variant_name"]').value = checked.value;
+      if(variantNameInput) variantNameInput.value = checked.value;
+      if(variantIdInput) variantIdInput.value = checked.getAttribute('data-variant-id') || '';
     }
   }catch(e){}
   return true;

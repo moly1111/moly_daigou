@@ -3,7 +3,7 @@
 {% block page_title %}{{ '编辑商品' if product else '添加商品' }}{% endblock %}
 
 {% block page_actions %}
-<a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
+<a href="{{ url_for('admin.admin_products') }}" class="btn btn-secondary">
     <i class="bi bi-arrow-left"></i> 返回列表
 </a>
 {% endblock %}
@@ -39,7 +39,7 @@
                     <div class="mb-3">
                         <label class="form-label d-flex align-items-center">
                           规格设置
-                          <span class="badge bg-light text-secondary ms-2">名称 / 展示价 / 购入价 / 图片</span>
+                          <span class="badge bg-light text-secondary ms-2">名称 / 展示价 / 购入价 / 库存 / 图片</span>
                         </label>
                         <style>
                           .variant-row{ background: var(--bs-light); border: 1px dashed var(--bs-border-color, #dee2e6); border-radius: .5rem; padding: .5rem .75rem; }
@@ -47,31 +47,36 @@
                           .variant-head{ color: #6c757d; font-size: .85rem; }
                         </style>
                         <div class="row variant-head gx-2 mb-1 d-none d-md-flex">
-                          <div class="col-md-4">规格名称</div>
-                          <div class="col-md-3">展示价</div>
-                          <div class="col-md-3">购入价</div>
+                          <div class="col-md-3">规格编号 / 名称</div>
+                          <div class="col-md-2">展示价</div>
+                          <div class="col-md-2">购入价</div>
+                          <div class="col-md-1">库存</div>
                           <div class="col-md-2">图片 / 操作</div>
                         </div>
                         <div id="variantList">
-                            {% set vs = product.variants|from_json if product and product.variants else [] %}
+                            {% set vs = product.variants_list if product else [] %}
                             {% for v in vs %}
                             <div class="row g-2 align-items-start mb-2 variant-row">
                                 <input type="hidden" name="v_idx" value="{{ loop.index0 }}">
                                 <input type="hidden" name="v_image_existing_{{ loop.index0 }}" value="{{ v.image if v.image else '' }}">
-                                <div class="col-md-4">
-                                    <input class="form-control" name="v_name" value="{{ v.name }}" placeholder="如：30ml / 礼盒装">
-                                </div>
                                 <div class="col-md-3">
+                                    <span class="badge bg-secondary me-1" title="该商品下的逻辑规格编号">#{{ v.local_id }}</span>
+                                    <input class="form-control d-inline-block" style="width:calc(100% - 2.5rem)" name="v_name" value="{{ v.name }}" placeholder="如：30ml / 礼盒装">
+                                </div>
+                                <div class="col-md-2">
                                     <div class="input-group">
                                         <span class="input-group-text">¥</span>
                                         <input type="number" class="form-control" name="v_price" value="{{ '%.2f'|format((product.price_rmb|float) + ((v.extra_price or 0)|float)) }}" step="0.01" placeholder="展示价">
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <div class="input-group">
                                         <span class="input-group-text">¥</span>
                                         <input type="number" class="form-control" name="v_cost" value="{{ '%.2f'|format((product.cost_price_rmb or 0)|float) }}" step="0.01" placeholder="购入价">
                                     </div>
+                                </div>
+                                <div class="col-md-1">
+                                    <input type="number" class="form-control" name="v_stock" value="{{ v.stock|default(0) }}" min="0" placeholder="0">
                                 </div>
                                 <div class="col-md-2">
                                     <input type="file" class="form-control" name="v_image_{{ loop.index0 }}" accept="image/*">
@@ -89,7 +94,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="addVariant()">+ 添加规格</button>
                         </div>
                         <input type="hidden" name="variants_text" id="variants_text_hidden">
-                        <div class="form-text">每个规格：名称 + 展示价 + 购入价；提交时自动转换并保存。</div>
+                        <div class="form-text">每个规格：名称、展示价、购入价、库存；提交时自动保存。</div>
                     </div>
 
                     <div class="mb-3">
@@ -127,7 +132,7 @@
                                      class="img-thumbnail" style="width: 100%; height: 150px; object-fit: cover;">
                                 <div class="mt-1 text-center">
                                     <button type="submit" class="btn btn-sm btn-outline-danger"
-                                            formaction="{{ url_for('admin_product_delete_image', product_id=product.id) }}"
+                                            formaction="{{ url_for('admin.admin_product_delete_image', product_id=product.id) }}"
                                             formmethod="POST" name="image_url" value="{{ image_url }}" formnovalidate
                                             onclick="return confirm('删除该图片？')">删除</button>
                                 </div>
@@ -138,13 +143,13 @@
                     {% endif %}
 
                     <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
+                        <a href="{{ url_for('admin.admin_products') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> 取消
                         </a>
                         <div class="d-flex gap-2">
                           {% if product %}
                           <button type="submit" class="btn btn-outline-danger" formmethod="POST"
-                                  formaction="{{ url_for('admin_product_delete', product_id=product.id) }}"
+                                  formaction="{{ url_for('admin.admin_product_delete', product_id=product.id) }}"
                                   onclick="return confirm('确认删除该商品？此操作不可撤销！')">
                             <i class="bi bi-trash"></i> 删除商品
                           </button>
@@ -212,21 +217,24 @@ function addVariant(){
   const idx = document.querySelectorAll('#variantList .variant-row').length;
   row.innerHTML = `
     <input type="hidden" name="v_idx" value="${idx}">
-    <input type="hidden" name="v_image_existing" value="">
-    <div class="col-md-4">
+    <input type="hidden" name="v_image_existing_${idx}" value="">
+    <div class="col-md-3">
       <input class="form-control" name="v_name" placeholder="规格名称">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <div class="input-group">
         <span class="input-group-text">¥</span>
         <input type="number" class="form-control" name="v_price" step="0.01" placeholder="展示价">
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <div class="input-group">
         <span class="input-group-text">¥</span>
         <input type="number" class="form-control" name="v_cost" step="0.01" placeholder="购入价">
       </div>
+    </div>
+    <div class="col-md-1">
+      <input type="number" class="form-control" name="v_stock" value="0" min="0" placeholder="0">
     </div>
     <div class="col-md-2">
       <input type="file" class="form-control" name="v_image_${idx}" accept="image/*">
@@ -254,9 +262,11 @@ document.getElementById('productForm').addEventListener('submit', function(){
     const name = r.querySelector('input[name="v_name"]').value.trim();
     const price = parseFloat(r.querySelector('input[name="v_price"]').value || '');
     const cost = parseFloat(r.querySelector('input[name="v_cost"]').value || '');
+    const stock = parseInt(r.querySelector('input[name="v_stock"]')?.value || '0', 10) || 0;
+    const imageExisting = r.querySelector('input[name^="v_image_existing"]')?.value || '';
     if(name){
       if(isFinite(price)) base = Math.min(base, price);
-      arr.push({name, price: isFinite(price)?price:null, cost: isFinite(cost)?cost:null});
+      arr.push({name, price: isFinite(price)?price:null, cost: isFinite(cost)?cost:null, stock: stock, image_existing: imageExisting});
     }
   });
   document.getElementById('variants_text_hidden').value = JSON.stringify(arr);
@@ -272,7 +282,7 @@ document.getElementById('btnLiveAdd')?.addEventListener('click', async function(
   const fd = new FormData();
   fd.append('image', file);
   try{
-    const resp = await fetch('{{ url_for('admin_product_upload_image', product_id=product.id) }}', { method: 'POST', body: fd });
+    const resp = await fetch('{{ url_for('admin.admin_product_upload_image', product_id=product.id) }}', { method: 'POST', body: fd });
     const data = await resp.json();
     if(!resp.ok || !data.ok){ alert(data.msg || '上传失败'); return; }
     // 追加到图片列表
@@ -281,7 +291,7 @@ document.getElementById('btnLiveAdd')?.addEventListener('click', async function(
     row.innerHTML = `
       <img src="${data.url}" class="img-thumbnail" style="width: 100%; height: 150px; object-fit: cover;">
       <div class="mt-1 text-center">
-        <button type="submit" class="btn btn-sm btn-outline-danger" formaction="{{ url_for('admin_product_delete_image', product_id=product.id) }}" formmethod="POST" name="image_url" value="${data.rel}" formnovalidate>删除</button>
+        <button type="submit" class="btn btn-sm btn-outline-danger" formaction="{{ url_for('admin.admin_product_delete_image', product_id=product.id) }}" formmethod="POST" name="image_url" value="${data.rel}" formnovalidate>删除</button>
       </div>`;
     document.querySelector('#currentImagesRow')?.appendChild(row);
     input.value = '';

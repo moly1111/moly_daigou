@@ -1,0 +1,37 @@
+{% extends "admin/base.html" %}
+{% block title %}数据库 - 后台管理 - Moly代购网站{% endblock %}
+{% block page_title %}数据库（只读）{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted mb-4">点击表名可查看该表内的真实数据，仅支持查看，不支持增删改。</p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>表名（中文）</th>
+                        <th>表名（库内）</th>
+                        <th>行数</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tables %}
+                    <tr>
+                        <td>{{ t.label }}</td>
+                        <td><code>{{ t.tablename }}</code></td>
+                        <td>{{ t.count }}</td>
+                        <td>
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.admin_database_table', tablename=t.tablename) }}">
+                                <i class="bi bi-eye"></i> 查看
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+# Nginx 反向代理示例（替换 your_domain、/path/to 为实际值）
+# 上传限制 50MB，与 MAX_CONTENT_LENGTH 一致
+upstream moly_daigou {
+    server 127.0.0.1:5000;
+}
+
+server {
+    listen 80;
+    server_name your_domain.com;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://moly_daigou;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+
+    location /static {
+        alias /path/to/moly_daigou/static;
+    }
+}
+
+# HTTPS 建议：使用 certbot 或手动配置 ssl_certificate / ssl_certificate_key

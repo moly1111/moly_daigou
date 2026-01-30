@@ -74,58 +74,70 @@
                     </div>
                     <ul class="nav flex-column">
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}" 
-                               href="{{ url_for('admin_dashboard') }}">
+                            <a class="nav-link {% if request.endpoint == 'admin.admin_dashboard' %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_dashboard') }}">
                                 <i class="bi bi-speedometer2"></i> 仪表盘
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_products', 'admin_new_product', 'admin_edit_product'] %}active{% endif %}" 
-                               href="{{ url_for('admin_products') }}">
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_products', 'admin.admin_new_product', 'admin.admin_edit_product'] %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_products') }}">
                                 <i class="bi bi-box"></i> 商品管理
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_orders', 'admin_new_order', 'admin_order_detail'] %}active{% endif %}" 
-                               href="{{ url_for('admin_orders') }}">
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_orders', 'admin.admin_new_order', 'admin.admin_order_detail'] %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_orders') }}">
                                 <i class="bi bi-list-ul"></i> 订单管理
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_purchase_preview'] %}active{% endif %}" 
-                               href="{{ url_for('admin_purchase_preview') }}">
-                                <i class="bi bi-download"></i> 采购清单
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_purchase_preview'] %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_purchase_preview') }}">
+                                <i class="bi bi-download"></i> 发货清单
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_users','admin_user_edit'] %}active{% endif %}"
-                               href="{{ url_for('admin_users') }}">
+                            <a class="nav-link {% if request.endpoint == 'admin.admin_warehouse' %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_warehouse') }}">
+                                <i class="bi bi-box-seam"></i> 仓储可视化
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_users','admin.admin_user_edit'] %}active{% endif %}"
+                               href="{{ url_for('admin.admin_users') }}">
                                 <i class="bi bi-people"></i> 用户管理
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin_settings' %}active{% endif %}" 
-                               href="{{ url_for('admin_settings') }}">
+                            <a class="nav-link {% if request.endpoint == 'admin.admin_settings' %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_settings') }}">
                                 <i class="bi bi-gear"></i> 系统设置
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_versions', 'admin_new_version'] %}active{% endif %}" 
-                               href="{{ url_for('admin_versions') }}">
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_versions', 'admin.admin_new_version'] %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_versions') }}">
                                 <i class="bi bi-tags"></i> 版本管理
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint in ['admin_chats','admin_chat_detail'] %}active{% endif %}" 
-                               href="{{ url_for('admin_chats') }}">
+                            <a class="nav-link {% if request.endpoint in ['chat.admin_chats','chat.admin_chat_detail'] %}active{% endif %}" 
+                               href="{{ url_for('chat.admin_chats') }}">
                                 <i class="bi bi-chat-dots"></i> 用户消息
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint in ['admin.admin_database', 'admin.admin_database_table'] %}active{% endif %}" 
+                               href="{{ url_for('admin.admin_database') }}">
+                                <i class="bi bi-hdd"></i> 数据库
                             </a>
                         </li>
                     </ul>
                     <hr class="text-white">
                     <ul class="nav flex-column">
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin_logout') }}">
+                            <a class="nav-link" href="{{ url_for('admin.admin_logout') }}">
                                 <i class="bi bi-box-arrow-right"></i> 退出登录
                             </a>
                         </li>
@@ -275,7 +287,7 @@
     // 管理员端全站未读消息轮询提醒，在聊天页面内抑制弹窗
     setInterval(async () => {
         try {
-            const res = await fetch('{{ url_for('api_chat_unread') }}', { credentials: 'same-origin' });
+            const res = await fetch('{{ url_for('chat.api_chat_unread') }}', { credentials: 'same-origin' });
             if(!res.ok) return;
             const data = await res.json();
             if (data.role === 'admin' && data.unread > 0 && !window.__suppressGlobalChatAlert) {

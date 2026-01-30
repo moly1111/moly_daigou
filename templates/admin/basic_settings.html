@@ -3,7 +3,7 @@
 {% block page_title %}基础设定{% endblock %}
 
 {% block page_actions %}
-<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回仪表盘</a>
+<a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回仪表盘</a>
 {% endblock %}
 
 {% block content %}
@@ -56,7 +56,7 @@
             <img src="{{ url_for('static', filename='uploads/' + wechat_qr) }}" class="img-fluid rounded" style="max-width: 200px;">
           </div>
           {% endif %}
-          <form method="POST" action="{{ url_for('admin_update_wechat_qr') }}" enctype="multipart/form-data">
+          <form method="POST" action="{{ url_for('admin.admin_update_wechat_qr') }}" enctype="multipart/form-data">
             <div class="mb-2">
               <input type="file" class="form-control" name="wechat_qr" accept="image/*">
             </div>

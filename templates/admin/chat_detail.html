@@ -5,7 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0">与 {{ user.email }} 的聊天</h5>
-  <a href="{{ url_for('admin_chats') }}" class="btn btn-outline-secondary btn-sm">返回</a>
+  <a href="{{ url_for('chat.admin_chats') }}" class="btn btn-outline-secondary btn-sm">返回</a>
 </div>
 
 <div id="chatScroll" class="border rounded p-3 mb-3 chat-box" style="height: 60vh; overflow-y: auto;">
@@ -69,7 +69,7 @@ let lastId = (function(){
 
 async function fetchNew(){
   try{
-    const url = new URL('{{ url_for('api_chat_messages_admin', user_id=user.id) }}', window.location.origin);
+    const url = new URL('{{ url_for('chat.api_chat_messages_admin', user_id=user.id) }}', window.location.origin);
     if(lastId){ url.searchParams.set('since_id', String(lastId)); }
     const res = await fetch(url, { credentials:'same-origin' });
     if(!res.ok) return;

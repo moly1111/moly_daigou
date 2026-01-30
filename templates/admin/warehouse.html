@@ -1,0 +1,267 @@
+{% extends "admin/base.html" %}
+
+{% block title %}仓储可视化 - 后台管理 - Moly代购网站{% endblock %}
+{% block page_title %}仓储可视化{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body">
+                <h6 class="text-muted text-uppercase mb-1">商品数</h6>
+                <h3 class="mb-0">{{ product_rows|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-info">
+            <div class="card-body">
+                <h6 class="text-muted text-uppercase mb-1">规格数（SKU）</h6>
+                <h3 class="mb-0">{{ total_variants }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body">
+                <h6 class="text-muted text-uppercase mb-1">库存总件数</h6>
+                <h3 class="mb-0">{{ total_stock }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h6 class="m-0 font-weight-bold">按商品查看库存</h6>
+    </div>
+    <div class="card-body">
+        {% if product_rows %}
+        <div class="row g-3">
+            {% for row in product_rows %}
+            <div class="col-12 col-lg-6 col-xl-4">
+                <div class="card h-100 border shadow-sm">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-truncate" title="{{ row.product.title }}">{{ row.product.title }}</span>
+                        <span class="badge bg-secondary">共 {{ row.product_stock }} 件</span>
+                    </div>
+                    <div class="card-body py-2">
+                        {% if row.variants %}
+                        <table class="table table-sm table-borderless mb-0">
+                            <thead>
+                                <tr class="text-muted small">
+                                    <th>规格</th>
+                                    <th class="text-end">库存</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for v in row.variants %}
+                                <tr>
+                                    <td>{{ v.name }}</td>
+                                    <td class="text-end">
+                                        {% set s = v.stock|default(0) %}
+                                        {% if s <= 0 %}
+                                        <span class="badge bg-danger">缺货</span>
+                                        {% elif s < 5 %}
+                                        <span class="badge bg-warning text-dark">{{ s }}</span>
+                                        {% else %}
+                                        <span class="badge bg-success">{{ s }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p class="text-muted small mb-0">暂无规格</p>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer py-1 bg-light">
+                        <a href="{{ url_for('admin.admin_edit_product', product_id=row.product.id) }}" class="btn btn-sm btn-outline-primary">编辑商品</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5 mb-0">暂无商品，请先在商品管理中添加。</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="m-0 font-weight-bold">趋势：销量 Top 10（已付款订单）</h6>
+        <ul class="nav nav-pills card-header-pills mb-0" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" data-bs-toggle="tab" href="#trend-1d" role="tab">近 1 天</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#trend-7d" role="tab">近 7 天</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#trend-30d" role="tab">近 30 天</a>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="trend-1d" role="tabpanel">
+                {% if trend_1d %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>商品</th>
+                                <th>规格</th>
+                                <th class="text-end">销量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in trend_1d %}
+                            <tr>
+                                <td>{{ r.product_title }}</td>
+                                <td>{{ r.variant_name }}</td>
+                                <td class="text-end"><strong>{{ r.qty }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">近 1 天暂无销量数据</p>
+                {% endif %}
+            </div>
+            <div class="tab-pane fade" id="trend-7d" role="tabpanel">
+                {% if trend_7d %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>商品</th>
+                                <th>规格</th>
+                                <th class="text-end">销量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in trend_7d %}
+                            <tr>
+                                <td>{{ r.product_title }}</td>
+                                <td>{{ r.variant_name }}</td>
+                                <td class="text-end"><strong>{{ r.qty }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">近 7 天暂无销量数据</p>
+                {% endif %}
+            </div>
+            <div class="tab-pane fade" id="trend-30d" role="tabpanel">
+                {% if trend_30d %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>商品</th>
+                                <th>规格</th>
+                                <th class="text-end">销量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in trend_30d %}
+                            <tr>
+                                <td>{{ r.product_title }}</td>
+                                <td>{{ r.variant_name }}</td>
+                                <td class="text-end"><strong>{{ r.qty }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">近 30 天暂无销量数据</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mt-4 pt-3 border-top">
+            <h6 class="text-muted mb-3">销量柱状图（随上方 Tab 切换）</h6>
+            <div class="position-relative" style="height: 320px;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    var TREND_1D = {{ trend_1d | tojson | safe }};
+    var TREND_7D = {{ trend_7d | tojson | safe }};
+    var TREND_30D = {{ trend_30d | tojson | safe }};
+    var dataByTab = { 'trend-1d': TREND_1D, 'trend-7d': TREND_7D, 'trend-30d': TREND_30D };
+
+    function buildChartData(items) {
+        if (!items || items.length === 0) return { labels: [], values: [] };
+        var labels = items.map(function(r) {
+            var s = (r.product_title || '') + (r.variant_name && r.variant_name !== '—' ? ' · ' + r.variant_name : '');
+            return s.length > 24 ? s.slice(0, 22) + '…' : s;
+        });
+        var values = items.map(function(r) { return r.qty; });
+        return { labels: labels, values: values };
+    }
+
+    function getColors(n) {
+        var base = ['rgba(13, 110, 253, 0.85)', 'rgba(25, 135, 84, 0.85)', 'rgba(255, 193, 7, 0.85)', 'rgba(220, 53, 69, 0.85)', 'rgba(111, 66, 193, 0.85)', 'rgba(253, 126, 20, 0.85)', 'rgba(32, 201, 151, 0.85)', 'rgba(102, 16, 242, 0.85)', 'rgba(214, 51, 132, 0.85)', 'rgba(13, 202, 240, 0.85)'];
+        var out = [];
+        for (var i = 0; i < n; i++) out.push(base[i % base.length]);
+        return out;
+    }
+
+    var ctx = document.getElementById('trendChart');
+    if (!ctx) return;
+    var currentTab = 'trend-1d';
+    var first = buildChartData(TREND_1D);
+    var chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: first.labels,
+            datasets: [{
+                label: '销量',
+                data: first.values,
+                backgroundColor: getColors(first.values.length),
+                borderColor: getColors(first.values.length).map(function(c) { return c.replace('0.85', '1'); }),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(ctx) { return '销量: ' + ctx.raw; } } }
+            },
+            scales: {
+                x: { beginAtZero: true, title: { display: true, text: '销量（件）' } },
+                y: { ticks: { maxRotation: 0, autoSkip: false } }
+            }
+        }
+    });
+
+    document.querySelectorAll('[data-bs-toggle="tab"][href^="#trend-"]').forEach(function(el) {
+        el.addEventListener('shown.bs.tab', function(e) {
+            var target = (e.target.getAttribute('href') || '').slice(1);
+            if (!target || !dataByTab[target]) return;
+            currentTab = target;
+            var d = buildChartData(dataByTab[target]);
+            chart.data.labels = d.labels;
+            chart.data.datasets[0].data = d.values;
+            chart.data.datasets[0].backgroundColor = getColors(d.values.length);
+            chart.data.datasets[0].borderColor = getColors(d.values.length).map(function(c) { return c.replace('0.85', '1'); });
+            chart.update();
+        });
+    });
+})();
+</script>
+{% endblock %}

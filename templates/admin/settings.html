@@ -11,7 +11,7 @@
                 <h6 class="m-0 font-weight-bold text-primary">收款二维码设置</h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('admin_update_qrcodes') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ url_for('admin.admin_update_qrcodes') }}" enctype="multipart/form-data">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="alipay_qr" class="form-label">支付宝收款码</label>
@@ -49,7 +49,7 @@
                 <h6 class="m-0 font-weight-bold text-primary">订单规则设置</h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('admin_update_order_rules') }}">
+                <form method="POST" action="{{ url_for('admin.admin_update_order_rules') }}">
                     <div class="mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="auto_cancel_enabled" 
@@ -82,7 +82,7 @@
                 <h6 class="m-0 font-weight-bold text-primary">首页封面图</h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('admin_update_cover') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ url_for('admin.admin_update_cover') }}" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="cover" class="form-label">封面图片</label>
                         <input type="file" class="form-control" id="cover" name="cover" accept="image/*">

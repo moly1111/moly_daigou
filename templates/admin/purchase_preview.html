@@ -1,12 +1,12 @@
 {% extends "admin/base.html" %}
 
-{% block page_title %}采购清单（预览）{% endblock %}
+{% block page_title %}发货清单{% endblock %}
 
 {% block content %}
 <div class="card shadow mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
     <h6 class="m-0 font-weight-bold text-primary">筛选条件</h6>
-    <small class="text-muted">口径：状态=处理中 且 已付款=true</small>
+    <small class="text-muted">口径：已付款；待发货=处理中且未填发货；已发货=已填快递并发货</small>
   </div>
   <div class="card-body">
     <form method="GET" class="row g-3 align-items-end">
@@ -30,51 +30,124 @@
 </div>
 
 <div class="card shadow">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="m-0 font-weight-bold text-primary">当前采购条目</h6>
-    <a class="btn btn-success" href="{{ url_for('admin_purchase_download', start_date=start_date, end_date=end_date, q=keyword) }}">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <ul class="nav nav-tabs card-header-tabs border-0" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-pending" role="tab">待发货</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-shipped" role="tab">已发货</a>
+      </li>
+    </ul>
+    <a class="btn btn-success btn-sm" href="{{ url_for('admin.admin_purchase_download', start_date=start_date, end_date=end_date, q=keyword) }}">
       <i class="bi bi-download"></i> 下载 CSV
     </a>
   </div>
   <div class="card-body">
-    {% if rows %}
-    <div class="table-responsive">
-      <table class="table table-bordered table-sm">
-        <thead>
-          <tr>
-            <th>下单时间</th>
-            <th>订单号</th>
-            <th>用户邮箱</th>
-            <th>收货人</th>
-            <th>手机号</th>
-            <th>地址</th>
-            <th>商品名称</th>
-            <th>规格备注</th>
-            <th>数量</th>
-            <th>来源</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rows %}
-          <tr>
-            <td>{{ r.created_at|cn_time }}</td>
-            <td><code>{{ r.order_no }}</code></td>
-            <td>{{ r.email }}</td>
-            <td>{{ r.receiver }}</td>
-            <td>{{ r.phone }}</td>
-            <td>{{ r.address }}</td>
-            <td>{{ r.name }}</td>
-            <td>{{ r.spec }}</td>
-            <td>{{ r.qty }}</td>
-            <td>{{ r.source }}</td>
-          </tr>
+    <div class="tab-content">
+      <!-- 待发货：按批次聚合 -->
+      <div class="tab-pane fade show active" id="tab-pending" role="tabpanel">
+        {% if pending_groups %}
+          {% for group in pending_groups %}
+          <div class="card border mb-3">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <span class="fw-bold">批次</span>
+                <span class="text-muted">{{ group.date|default('未知日期') }}</span>
+                <span class="ms-2">{{ group.user.email }}</span>
+                {% if group.address %}
+                <span class="ms-2 small">{{ group.address.name }} {{ group.address.phone }}</span>
+                <span class="ms-2 small text-muted">{{ group.address.address_text }}</span>
+                {% endif %}
+              </div>
+              <span class="badge bg-secondary">订单：{{ group.order_nos|join('、') }}</span>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive mb-3">
+                <table class="table table-bordered table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th>订单号</th>
+                      <th>商品名称</th>
+                      <th>规格</th>
+                      <th>数量</th>
+                      <th>来源</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for order in group.orders %}
+                      {% for item in order.items %}
+                      <tr>
+                        <td><code>{{ order.order_no }}</code></td>
+                        <td>{{ title_map.get(item.product_id, item.name) if item.product_id else item.name }}</td>
+                        <td>{{ item.variant_name or item.spec_note or '-' }}</td>
+                        <td>{{ item.qty }}</td>
+                        <td>{{ '商品库' if item.product_id else '自定义' }}</td>
+                      </tr>
+                      {% endfor %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <form method="post" action="{{ url_for('admin.admin_orders_mark_shipped') }}" class="row g-2 align-items-end">
+                <input type="hidden" name="start_date" value="{{ start_date }}">
+                <input type="hidden" name="end_date" value="{{ end_date }}">
+                <input type="hidden" name="keyword" value="{{ keyword }}">
+                {% for order in group.orders %}
+                <input type="hidden" name="order_id" value="{{ order.id }}">
+                {% endfor %}
+                <div class="col-auto">
+                  <label class="form-label mb-0">快递单号</label>
+                  <input type="text" name="tracking_number" class="form-control form-control-sm" placeholder="必填" required maxlength="100">
+                </div>
+                <div class="col-auto">
+                  <button type="submit" class="btn btn-primary btn-sm">标记发货</button>
+                </div>
+              </form>
+            </div>
+          </div>
           {% endfor %}
-        </tbody>
-      </table>
+        {% else %}
+        <div class="text-center text-muted py-5">暂无待发货订单，请调整筛选条件</div>
+        {% endif %}
+      </div>
+
+      <!-- 已发货 -->
+      <div class="tab-pane fade" id="tab-shipped" role="tabpanel">
+        {% if shipped_orders %}
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead>
+              <tr>
+                <th>发货时间</th>
+                <th>订单号</th>
+                <th>快递单号</th>
+                <th>用户邮箱</th>
+                <th>收货人</th>
+                <th>手机号</th>
+                <th>地址</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for order in shipped_orders %}
+              <tr>
+                <td>{{ order.shipped_at|cn_time('%Y-%m-%d %H:%M') if order.shipped_at else '-' }}</td>
+                <td><code>{{ order.order_no }}</code></td>
+                <td>{{ order.tracking_number or '-' }}</td>
+                <td>{{ order.user.email }}</td>
+                <td>{{ order.user.address.name if order.user.address else '-' }}</td>
+                <td>{{ order.user.address.phone if order.user.address else '-' }}</td>
+                <td>{{ order.user.address.address_text if order.user.address else '-' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">暂无已发货记录</div>
+        {% endif %}
+      </div>
     </div>
-    {% else %}
-    <div class="text-center text-muted py-5">暂无数据，请调整筛选条件</div>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

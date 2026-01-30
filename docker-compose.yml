@@ -1,15 +1,21 @@
+# Moly 代购网站 - Docker Compose
+# 使用前：复制 .env.example 为 .env，填写 SECRET_KEY、ADMIN_USERNAME、ADMIN_PASSWORD
+# 首次启动后执行：docker compose exec moly_daigou flask db upgrade
+
 version: '3.8'
 
 services:
   moly_daigou:
     build: .
+    image: moly_daigou:latest
+    container_name: moly_daigou
     ports:
       - "5000:5000"
+    env_file:
+      - .env
     environment:
       - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DATABASE_URL=sqlite:////app/instance/daigou.db
     volumes:
       - ./static/uploads:/app/static/uploads
       - ./instance:/app/instance

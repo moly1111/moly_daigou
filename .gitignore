@@ -67,3 +67,10 @@ logs/
 # 临时文件
 *.tmp
 *.temp
+
+# 切勿提交密钥与调试/临时记录
+回车
+回车.pub
+*调试*.txt
+*测试信息*.txt
+simulate_hardware/device_config.txt

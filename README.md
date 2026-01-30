@@ -1,119 +1,151 @@
-## Moly 代购网站（单机/自用版）
+# Moly 代购网站
 
-一个面向个人的小型代购系统：支持多规格商品、变体图片与价格、购物车和订单、收款核验、聊天、基础仪表盘。默认 SQLite，适合 Windows 本地部署，也可迁移至 Linux。
+面向个人的小型代购系统：多规格商品与库存、购物车与订单、收款与发货、聊天、后台管理与仓储可视化。默认 SQLite，支持 Docker 一键运行。
 
-### 核心功能
-- 前台：
-  - 访客可直接浏览商品（封面可关闭）
-  - 注册/登录（邮箱验证码）与唯一收货地址
-  - 商品多图展示，规格（尺寸/颜色等）选择并联动价格与图片
-  - 购物车数量≥1、实时小计、下架项自动不计
-  - 提交/取消订单，订单详情、付款截图上传
-  - 深浅主题与图片放大（缩略图可禁放大）
-- 后台：
-  - 管理员登录（仅允许环境变量指定的账号）
-  - 商品管理：多图、变体（名称/展示价/购入价/变体图）、置顶、删除
-  - 订单管理：筛选/创建/标记收款（支持输入实收金额）/导出采购清单
-  - 用户管理：直接创建用户（免邮箱验证）、封禁/解封/编辑/删除
-  - 仪表盘：总收入、待收款、当日新单/营收、未读消息、热销 Top5
-  - 基础设置：站点标题/页脚/封面上传
-- 聊天：
-  - 用户与管理员双向聊天
-  - 支持文字、图片与通用文件（txt/docx/pdf/csv 等）
-  - 轮询实时更新、在聊天页抑制重复通知、自动滚动到底部
-- 定时任务：
-  - 自动取消超时未付款订单
-  - 清理过期邮箱验证码
+## 功能概览
 
-### 技术栈
-Flask + SQLAlchemy + Flask-Login + Bootstrap 5 + SQLite（默认）
+### 前台
+- 商品浏览（多图、多规格、规格库存与价格联动）
+- 注册/登录（邮箱验证码）、收货地址
+- 购物车、下单、取消订单、付款截图上传
+- 订单详情、发货通知（含快递号）
+- 深浅主题、图片放大
 
-## 快速开始（Windows 示例）
+### 后台
+- 管理员登录（环境变量指定账号）
+- **商品管理**：多图、规格（名称/展示价/购入价/库存/规格图）、置顶、删除
+- **订单管理**：筛选、创建、标记收款、修改状态、导出发货清单
+- **发货清单**：待发货按批次聚合（同日期同用户）、填快递号标记发货、已发货列表、邮件通知客户
+- **用户管理**：创建用户、封禁/解封、编辑、删除
+- **仓储可视化**：按商品/规格查看库存；**趋势**：近 1/7/30 天销量 Top 10 与柱状图
+- **数据库**：只读查看所有表
+- 仪表盘、基础设置、版本管理
+
+### 其他
+- **聊天**：用户与管理员双向聊天（文字、图片、文件）
+- **定时任务**：自动取消超时未付款订单、清理过期验证码
+- **RFID 入库 API**：`POST /api/rfid/ingest`，支持「商品id;规格id;数量」或「商品id;L:逻辑规格编号;数量」，用于硬件/模拟入库
+
+## 技术栈
+
+Flask + SQLAlchemy + Flask-Login + Flask-Migrate + Bootstrap 5 + SQLite（默认）
+
+## 项目结构
+
+```
+moly_daigou/
+├── app.py                 # 应用入口
+├── wsgi.py                # Gunicorn 入口
+├── gunicorn.conf.py       # Gunicorn 配置
+├── core/                  # 核心：扩展、模型、工具
+├── blueprints/            # 路由：frontend, admin_bp, chat, api_rfid
+├── services/              # 邮件、定时任务
+├── templates/             # Jinja2 模板
+├── migrations/            # Flask-Migrate 迁移
+├── simulate_hardware/     # RFID 入库模拟脚本与说明
+├── deploy/                # 部署示例（如 nginx.conf.example）
+├── scripts/               # 可选脚本（如 deploy.sh）
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── README.md
+└── DEPLOYMENT.md          # 部署与运维说明
+```
+
+## 快速开始
+
+### 方式一：Docker（推荐）
+
 ```bash
-# 1) 创建并激活虚拟环境
-python -m venv venv
-venv\Scripts\activate
+# 1. 克隆项目
+git clone https://github.com/yourusername/moly_daigou.git
+cd moly_daigou
 
-# 2) 安装依赖
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env，至少填写：SECRET_KEY、ADMIN_USERNAME、ADMIN_PASSWORD
+
+# 3. 构建并启动
+docker compose up -d --build
+
+# 4. 首次运行执行数据库迁移
+docker compose exec moly_daigou flask db upgrade
+```
+
+访问：前台 http://localhost:5000 ，后台 http://localhost:5000/admin
+
+数据与上传文件会持久化在 `./instance` 与 `./static/uploads`（见 docker-compose 卷挂载）。
+
+### 方式二：本地 Python
+
+```bash
+# 1. 虚拟环境
+python3 -m venv venv
+source venv/bin/activate   # Linux/macOS
+# 或 venv\Scripts\activate  # Windows
+
+# 2. 依赖
 pip install -r requirements.txt
 
-# 3) 配置环境变量（必须）
-# 新建 .env 并填写下方“环境变量”章节中的必填项
+# 3. 环境变量（必填）
+cp .env.example .env
+# 编辑 .env：SECRET_KEY、ADMIN_USERNAME、ADMIN_PASSWORD
 
-# 4) 启动
+# 4. 迁移
+flask db upgrade
+
+# 5. 启动
 python app.py
-# 前台: http://127.0.0.1:5000
-# 后台: http://127.0.0.1:5000/admin
 ```
 
-首次启动将：
-- 校验必须的环境变量，缺失或默认占位将直接退出；
-- 用 `ADMIN_USERNAME/ADMIN_PASSWORD` 初始化或更新管理员账户；
-- 对旧 SQLite 库执行必要的列新增（见“自动迁移”）。
+## 环境变量
 
-## 环境变量（必填/可选）
-在项目根目录创建 `.env`：
-```env
-# 必填：安全/账号
-SECRET_KEY=请填入足够随机的长字符串
-ADMIN_USERNAME=你的管理员用户名
-ADMIN_PASSWORD=你的强密码
+在项目根目录创建 `.env`（参考 `.env.example`）：
 
-# 可选：运行/数据库
-FLASK_ENV=development
-FLASK_DEBUG=True
-DATABASE_URL=sqlite:///daigou.db
-TIMEZONE=Asia/Shanghai
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `SECRET_KEY` | 是 | 应用密钥，请使用足够随机的长字符串 |
+| `ADMIN_USERNAME` | 是 | 管理员登录用户名 |
+| `ADMIN_PASSWORD` | 是 | 管理员登录密码（将做 hash 存储） |
+| `DATABASE_URL` | 否 | 数据库 URL，默认 `sqlite:///daigou.db` |
+| `FLASK_DEBUG` / `FLASK_ENV` | 否 | 开发时可设为 `1` / `development` |
+| `UPLOAD_FOLDER` | 否 | 上传目录，默认 `static/uploads` |
+| `MAX_CONTENT_LENGTH` | 否 | 上传大小限制（字节），默认约 50MB |
+| `SMTP_*` / `SENDER_*` | 否 | 邮件配置（验证码、通知） |
+| `RFID_API_KEY` | 否 | RFID 入库 API 密钥，不配置则接口返回 401 |
 
-# 可选：邮件（用于注册验证码/通知）
-SMTP_SERVER=smtp.163.com
-SMTP_PORT=465
-SENDER_EMAIL=your-email@example.com
-SENDER_PASSWORD=your-app-password
-DEFAULT_RECEIVER_EMAIL=default-receiver@example.com
-
-# 可选：上传
-MAX_CONTENT_LENGTH=52428800
-UPLOAD_FOLDER=static/uploads
-```
-
-说明：
-- 强制校验：`SECRET_KEY`、`ADMIN_USERNAME`、`ADMIN_PASSWORD` 必须通过环境变量注入，否则应用启动失败。
-- 管理员登录：仅允许 `ADMIN_USERNAME` 指定的账号登录，历史账号（如 `admin`）即使存在也不可登录。
-- 数据库默认 SQLite，便于单机部署；如需 MySQL/PostgreSQL，自行设置 `DATABASE_URL`。
+说明：管理员仅允许 `ADMIN_USERNAME` 对应的账号登录；RFID 接口鉴权使用 Header `X-API-Key` 或 query `api_key`。
 
 ## 数据与目录
-- 数据库：`instance/daigou.db`
-- 上传：`static/uploads/`（商品、支付截图、聊天文件、封面、二维码）
 
-## 自动迁移（SQLite：应用启动时）
-为兼容旧库，应用会在启动时按需新增缺失列（若已存在则跳过）：
-- Product：`cost_price_rmb`、`variants`、`pinned`
-- CartItem：`variant_name`
-- OrderItem：`unit_price`、`unit_cost`、`variant_name`
+- **数据库**：默认 `instance/daigou.db`（SQLite）
+- **上传文件**：`static/uploads/`（商品图、支付截图、聊天文件、封面、二维码等）
 
-并保持历史订单“价格不回溯”：下单时把单价/成本固化到 `OrderItem.unit_price/unit_cost`，之后改商品价不影响已下单统计。
+## 数据库迁移
 
-## 功能要点与变化
-- 商品变体：每个规格独立的名称、展示价、购入价与图片；商品顶层展示“¥最低规格价 起”。
-- 商品统计：
-  - 列表页展示：总销量、总下单数、总利润，支持“置顶”。
-  - 详情页：分变体的销量、订单数、单规格利润、总利润。
-- 订单金额：支持“应收/实收”拆分；标记收款时可输入实收金额。
-- 聊天：支持通用文件上传，展示可下载链接；在聊天页时不弹重复通知，滚动跟随。
-- 前端细节：
-  - 商品详情：去除轮播，主图 + 缩略图；选规格联动主图与价格；缩略图禁缩放。
-  - 暗色模式：图标与阴影适配，按钮可见性修复。
-- 后台便捷：可直接创建用户（免邮箱验证），并可编辑其地址信息。
+使用 Flask-Migrate（Alembic）：
 
-## 迁移到 Linux（简要）
-- 推荐 `Gunicorn + Nginx + systemd`；Nginx 配置 `client_max_body_size 50m;`
-- 确保 `static/uploads/` 写权限；APScheduler 建议单进程启用或改为系统级 cron
+```bash
+flask db upgrade          # 应用迁移
+flask db migrate -m "说明" # 生成新迁移（改模型后）
+```
 
-## Git/版本建议
-- 忽略：`instance/`、`static/uploads/`、`.env`、`venv/`、`__pycache__`
-- 保留 `.env.example` 列出变量示例（不含敏感值）
+Docker 下：`docker compose exec moly_daigou flask db upgrade`
 
-如需 Dockerfile、Nginx/Gunicorn 配置或 CI 模板，请告知目标环境与需求。
+## 仓储与 RFID 入库
 
+- **后台**：仓储可视化页可查看库存、销量趋势与柱状图；规格使用「逻辑编号」（按商品从 1 开始）。
+- **API**：`POST /api/rfid/ingest`，Body 示例 `{"data": "2;L:1;3"}` 表示商品 2 的规格 1 入库 3 件。详见 `simulate_hardware/README.md` 与接口注释。
 
+## 生产部署
+
+- **进程**：建议 Gunicorn（见 `wsgi.py`、`gunicorn.conf.py`），配合 Nginx 反向代理。
+- **定时任务**：生产环境通过环境变量 `RUN_SCHEDULER=1` 且单 worker 时在进程内执行；也可关闭后改用系统 cron。
+- **HTTPS**：生产务必使用 HTTPS；SECRET_KEY、管理员密码需强随机且不提交仓库。
+
+详见 **DEPLOYMENT.md**（含 Gunicorn、Nginx、systemd、Docker 说明）。
+
+## 版本与忽略
+
+- **Git**：建议忽略 `instance/`、`static/uploads/`、`.env`、`venv/`、`__pycache__`；保留 `.env.example` 作示例。
+- **License**：按项目约定。

@@ -3,7 +3,7 @@
 {% block page_title %}商品管理{% endblock %}
 
 {% block page_actions %}
-<a href="{{ url_for('admin_new_product') }}" class="btn btn-primary">
+<a href="{{ url_for('admin.admin_new_product') }}" class="btn btn-primary">
     <i class="bi bi-plus-circle"></i> 添加商品
 </a>
 {% endblock %}
@@ -70,15 +70,15 @@
                         </td>
                         <td>{{ product.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
-                            <a href="{{ url_for('admin_edit_product', product_id=product.id) }}" 
+                            <a href="{{ url_for('admin.admin_edit_product', product_id=product.id) }}" 
                                class="btn btn-sm btn-primary">
                                 <i class="bi bi-pencil"></i> 编辑
                             </a>
-                            <a href="{{ url_for('admin_product_stats', product_id=product.id) }}" class="btn btn-sm btn-outline-info">
+                            <a href="{{ url_for('admin.admin_product_stats', product_id=product.id) }}" class="btn btn-sm btn-outline-info">
                                 <i class="bi bi-bar-chart"></i> 详情
                             </a>
                             {% if product.status == 'up' %}
-                                <form method="POST" action="{{ url_for('admin_edit_product', product_id=product.id) }}" 
+                                <form method="POST" action="{{ url_for('admin.admin_edit_product', product_id=product.id) }}" 
                                       style="display: inline;">
                                     <input type="hidden" name="status" value="down">
                                     <button type="submit" class="btn btn-sm btn-warning" 
@@ -87,7 +87,7 @@
                                     </button>
                                 </form>
                             {% else %}
-                                <form method="POST" action="{{ url_for('admin_edit_product', product_id=product.id) }}" 
+                                <form method="POST" action="{{ url_for('admin.admin_edit_product', product_id=product.id) }}" 
                                       style="display: inline;">
                                     <input type="hidden" name="status" value="up">
                                     <button type="submit" class="btn btn-sm btn-success">
@@ -95,7 +95,7 @@
                                     </button>
                                 </form>
                             {% endif %}
-                            <form method="POST" action="{{ url_for('admin_product_pin', product_id=product.id) }}" style="display:inline;">
+                            <form method="POST" action="{{ url_for('admin.admin_product_pin', product_id=product.id) }}" style="display:inline;">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-pin-angle"></i> 置顶
                                 </button>

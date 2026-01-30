@@ -7,7 +7,7 @@
   <div class="col-12 col-md-8 mx-auto">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="mb-0"><i class="bi bi-chat-dots"></i> 与管理员聊天</h5>
-      <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">返回</a>
+      <a href="{{ url_for('frontend.index') }}" class="btn btn-outline-secondary btn-sm">返回</a>
     </div>
 
     <div id="chatScroll" class="border rounded p-3 mb-3 chat-box" style="height: 60vh; overflow-y: auto;">
@@ -74,7 +74,7 @@ let lastId = (function(){
 
 async function fetchNew(){
   try{
-    const url = new URL('{{ url_for('api_chat_messages_user') }}', window.location.origin);
+    const url = new URL('{{ url_for('chat.api_chat_messages_user') }}', window.location.origin);
     if(lastId){ url.searchParams.set('since_id', String(lastId)); }
     const res = await fetch(url, { credentials:'same-origin' });
     if(!res.ok) return;
@@ -115,7 +115,7 @@ document.getElementById('chatForm')?.addEventListener('submit', async (e)=>{
     if(f.files && f.files[0]){ form.append('image', f.files[0]); }
     if(g.files && g.files[0]){ form.append('file', g.files[0]); }
     if(!text && !(f.files && f.files[0]) && !(g.files && g.files[0])) return;
-    const res = await fetch('{{ url_for('api_chat_send_user') }}', { method:'POST', body: form, credentials:'same-origin' });
+    const res = await fetch('{{ url_for('chat.api_chat_send_user') }}', { method:'POST', body: form, credentials:'same-origin' });
     if(!res.ok) return;
     const m = await res.json();
     const container = document.getElementById('chatScroll');

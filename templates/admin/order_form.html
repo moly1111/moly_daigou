@@ -3,7 +3,7 @@
 {% block page_title %}创建订单{% endblock %}
 
 {% block page_actions %}
-<a href="{{ url_for('admin_orders') }}" class="btn btn-secondary">
+<a href="{{ url_for('admin.admin_orders') }}" class="btn btn-secondary">
     <i class="bi bi-arrow-left"></i> 返回列表
 </a>
 {% endblock %}
@@ -67,7 +67,7 @@
                     </div>
 
                     <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('admin_orders') }}" class="btn btn-secondary">
+                        <a href="{{ url_for('admin.admin_orders') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> 取消
                         </a>
                         <button type="submit" class="btn btn-primary">

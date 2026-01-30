@@ -3,7 +3,7 @@
 {% block page_title %}商品统计 - {{ p.title }}{% endblock %}
 
 {% block page_actions %}
-<a href="{{ url_for('admin_products') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回列表</a>
+<a href="{{ url_for('admin.admin_products') }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> 返回列表</a>
 {% endblock %}
 
 {% block content %}
@@ -42,7 +42,7 @@
           <tr class="collapse" id="orders-{{ loop.index0 }}">
             <td colspan="5">
               {% for no in r.orders %}
-                <a href="{{ url_for('admin_order_detail', order_no=no) }}" class="badge bg-info text-dark me-1">{{ no }}</a>
+                <a href="{{ url_for('admin.admin_order_detail', order_no=no) }}" class="badge bg-info text-dark me-1">{{ no }}</a>
               {% endfor %}
               <span class="text-muted ms-2">共 {{ r.orders|length }} 单</span>
             </td>
