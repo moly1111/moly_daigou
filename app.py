@@ -26,6 +26,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///dai
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'static/uploads')
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', '52428800'))
+app.config['DATABASE_PASSWORD'] = (os.getenv('DATABASE_PASSWORD') or '').strip()
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 for sub in ('products', 'payments', 'qrcodes', 'covers', 'chat'):

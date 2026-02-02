@@ -68,7 +68,7 @@ def cart_page():
         if ci.variant_id and ci.variant:
             unit = ci.variant.get_display_price(p)
         else:
-            unit = float(p.price_rmb) + p.get_variant_extra_price(ci.variant_name)
+            unit = p.get_variant_price(ci.variant_name)
         display.append({'item': ci, 'product': p, 'unit_price': unit, 'subtotal': unit * ci.qty})
     return render_template('frontend/cart.html', cart_items=display)
 
@@ -200,9 +200,10 @@ def cart_checkout():
     for (ci, p) in cart_items:
         if ci.variant_id and ci.variant:
             unit_price = ci.variant.get_display_price(p)
+            unit_cost = ci.variant.get_cost()
         else:
-            unit_price = float(p.price_rmb) + p.get_variant_extra_price(ci.variant_name)
-        unit_cost = float(p.cost_price_rmb or 0)
+            unit_price = p.get_variant_price(ci.variant_name)
+            unit_cost = p.get_variant_cost(ci.variant_name)
         per_item_prices[ci.id] = (unit_price, unit_cost)
         amount_items += unit_price * ci.qty
     amount_shipping = 0.0
@@ -217,7 +218,7 @@ def cart_checkout():
     db.session.add(order)
     db.session.flush()
     for (ci, p) in cart_items:
-        up, uc = per_item_prices.get(ci.id, (float(p.price_rmb), float(p.cost_price_rmb or 0)))
+        up, uc = per_item_prices.get(ci.id, (p.get_variant_price(ci.variant_name), p.get_variant_cost(ci.variant_name)))
         oi = OrderItem(
             order_id=order.id,
             product_id=p.id,

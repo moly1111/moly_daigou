@@ -20,7 +20,7 @@
     <h4>{{ p.title }}</h4>
     {% if p.note %}<p class="text-muted">{{ p.note }}</p>{% endif %}
     <div class="mb-2">
-      <span id="unitPrice" data-base="{{ '%.2f'|format(p.price_rmb) }}" class="text-primary fw-bold">¥{{ '%.2f'|format(p.price_rmb) }}</span>
+      <span id="unitPrice" data-base="{{ '%.2f'|format(p.get_min_display_price()) }}" class="text-primary fw-bold">¥{{ '%.2f'|format(p.get_min_display_price()) }}</span>
     </div>
 
     {% if variants %}
@@ -30,7 +30,7 @@
         {% for v in variants %}
         {% set stock_num = v.stock|default(0) %}
         <label class="btn btn-outline-secondary btn-sm mb-0 variant-label {% if stock_num <= 0 %}disabled{% endif %}">
-          <input type="radio" name="variant_name" class="btn-check variant-option" autocomplete="off" value="{{ v.name }}" data-variant-id="{{ v.id|default('') }}" data-extra="{{ '%.2f'|format(v.extra_price or 0) }}" data-image="{{ v.image or '' }}" {% if stock_num <= 0 %}disabled{% endif %}> {{ v.name }}{% if stock_num <= 0 %}（缺货）{% else %}（库存 {{ stock_num }}）{% endif %}
+          <input type="radio" name="variant_name" class="btn-check variant-option" autocomplete="off" value="{{ v.name }}" data-variant-id="{{ v.id|default('') }}" data-price="{{ '%.2f'|format(v.price|default(p.price_rmb)) }}" data-image="{{ v.image or '' }}" {% if stock_num <= 0 %}disabled{% endif %}> {{ v.name }}{% if stock_num <= 0 %}（缺货）{% else %}（库存 {{ stock_num }}）{% endif %}
         </label>
         {% endfor %}
       </div>
@@ -94,9 +94,9 @@ document.addEventListener('DOMContentLoaded', function(){
     const checked = document.querySelector('input[name="variant_name"]:checked');
     document.querySelectorAll('#variantGroup .variant-label').forEach(l=>l.classList.remove('active'));
     if(checked){
-      const extra = parseFloat(checked.getAttribute('data-extra') || '0');
+      const price = parseFloat(checked.getAttribute('data-price') || '0');
       const img = checked.getAttribute('data-image') || '';
-      baseEl.textContent = '¥' + (base + (isNaN(extra)?0:extra)).toFixed(2);
+      baseEl.textContent = '¥' + (isNaN(price) ? base : price).toFixed(2);
       checked.closest('label')?.classList.add('active');
       // 初次进入页面不自动切换概述图；仅在用户主动切换规格时切图
       if(userChangedVariant && img){ applyVariantImage(img); }

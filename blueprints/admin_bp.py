@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, session
 from flask_login import login_required, login_user, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -92,6 +92,115 @@ def _row_to_readable_dict(model, row, mask_fields=None):
     return out
 
 
+def _get_db_edit_mode():
+    """是否处于数据库编辑模式（需验证密码）。"""
+    return session.get('database_edit_mode', False)
+
+
+def _get_non_editable_columns(model):
+    """不可编辑的列：主键、password_hash（需特殊处理）。"""
+    pk_names = {c.name for c in model.__table__.primary_key.columns}
+    return pk_names | {'password_hash'}
+
+
+@admin_bp.route('/admin/database/verify-password', methods=['POST'])
+@login_required
+@admin_required
+def admin_database_verify_password():
+    """验证数据库编辑密码，通过后开启编辑模式。"""
+    expected = (current_app.config.get('DATABASE_PASSWORD') or os.getenv('DATABASE_PASSWORD') or '').strip()
+    if not expected:
+        return jsonify({'ok': False, 'error': '未配置 DATABASE_PASSWORD，编辑功能不可用'}), 400
+    # 支持 form 与 JSON 两种方式
+    if request.is_json and request.get_json(silent=True):
+        password = (request.get_json(silent=True) or {}).get('password') or ''
+    else:
+        password = request.form.get('password') or ''
+    password = (password or '').strip()
+    if password != expected:
+        return jsonify({'ok': False, 'error': '密码错误'}), 403
+    session['database_edit_mode'] = True
+    return jsonify({'ok': True, 'message': '验证通过，已开启编辑模式'})
+
+
+@admin_bp.route('/admin/database/exit-edit', methods=['POST'])
+@login_required
+@admin_required
+def admin_database_exit_edit():
+    """退出数据库编辑模式。"""
+    session.pop('database_edit_mode', None)
+    return jsonify({'ok': True})
+
+
+@admin_bp.route('/admin/database/<tablename>/update-cell', methods=['POST'])
+@login_required
+@admin_required
+def admin_database_update_cell(tablename):
+    """更新数据库单元格（需已通过密码验证）。"""
+    if not _get_db_edit_mode():
+        return jsonify({'ok': False, 'error': '请先验证数据库密码以开启编辑模式'}), 403
+    model_by_name = {m.__tablename__: (label, m) for label, m in DATABASE_VIEW_MODELS}
+    if tablename not in model_by_name:
+        return jsonify({'ok': False, 'error': '表不存在'}), 404
+    label, model = model_by_name[tablename]
+    non_editable = _get_non_editable_columns(model)
+    pk_col = list(model.__table__.primary_key.columns)[0].name
+    data = request.json if request.is_json and request.json else request.form
+    col_name = data.get('column')
+    pk_val = data.get('pk')
+    new_val = data.get('value')
+    if col_name in non_editable:
+        return jsonify({'ok': False, 'error': f'列 {col_name} 不可编辑'}), 400
+    if col_name not in [c.name for c in model.__table__.columns]:
+        return jsonify({'ok': False, 'error': f'列 {col_name} 不存在'}), 400
+    try:
+        pk_typed = int(pk_val) if pk_val is not None else pk_val
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': '主键格式无效'}), 400
+    row = model.query.filter(getattr(model, pk_col) == pk_typed).first()
+    if not row:
+        return jsonify({'ok': False, 'error': '记录不存在'}), 404
+    col = model.__table__.columns[col_name]
+    try:
+        _coerce_and_set(row, col, new_val)
+        db.session.commit()
+        val = getattr(row, col_name)
+        if hasattr(val, 'isoformat'):
+            val = val.isoformat()
+        return jsonify({'ok': True, 'value': val})
+    except Exception as e:
+        db.session.rollback()
+        logger.exception('数据库单元格更新失败: %s', e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _coerce_and_set(row, col, value):
+    """根据列类型转换并设置值。"""
+    val = value
+    if val == '' or val is None:
+        setattr(row, col.name, None)
+        return
+    type_name = type(col.type).__name__
+    if type_name in ('INTEGER', 'Integer'):
+        setattr(row, col.name, int(float(val)))
+    elif type_name in ('NUMERIC', 'Numeric', 'Float', 'DECIMAL'):
+        setattr(row, col.name, float(val))
+    elif type_name in ('Boolean', 'BOOLEAN'):
+        v = str(val).lower()
+        setattr(row, col.name, v in ('1', 'true', 'yes', 'on'))
+    elif type_name in ('DateTime', 'DATETIME', 'Date', 'DATE'):
+        s = str(val).strip()
+        for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                setattr(row, col.name, datetime.strptime(s[:26], fmt))
+                return
+            except ValueError:
+                continue
+        setattr(row, col.name, val)
+    else:
+        setattr(row, col.name, str(val))
+
+
 @admin_bp.route('/admin/database')
 @login_required
 @admin_required
@@ -108,7 +217,7 @@ def admin_database():
             'tablename': model.__tablename__,
             'count': count,
         })
-    return render_template('admin/database.html', tables=tables)
+    return render_template('admin/database.html', tables=tables, db_edit_mode=_get_db_edit_mode())
 
 
 @admin_bp.route('/admin/database/<tablename>')
@@ -128,8 +237,14 @@ def admin_database_table(tablename):
     pagination = model.query.order_by(order_col).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    rows = [_row_to_readable_dict(model, r) for r in pagination.items]
+    pk_col = list(model.__table__.primary_key.columns)[0].name
+    rows = []
+    for r in pagination.items:
+        d = _row_to_readable_dict(model, r)
+        d['_pk'] = getattr(r, pk_col)
+        rows.append(d)
     columns = [c.name for c in model.__table__.columns]
+    non_editable = list(_get_non_editable_columns(model))
     return render_template(
         'admin/database_table.html',
         label=label,
@@ -137,6 +252,8 @@ def admin_database_table(tablename):
         columns=columns,
         rows=rows,
         pagination=pagination,
+        db_edit_mode=_get_db_edit_mode(),
+        non_editable_cols=non_editable,
     )
 
 
@@ -312,6 +429,9 @@ def admin_new_product():
             raw_list = json.loads(variants_text) if variants_text else []
         except Exception:
             raw_list = []
+        if not raw_list:
+            flash('请至少添加一个规格', 'error')
+            return render_template('admin/product_form.html')
         prices = [float(x.get('price') or 0) for x in raw_list if (x.get('price') is not None)]
         costs = [float(x.get('cost') or 0) for x in raw_list if (x.get('cost') is not None)]
         base_price = min(prices) if prices else 0.0
@@ -327,7 +447,7 @@ def admin_new_product():
         for idx, x in enumerate(raw_list):
             name = (x.get('name') or '').strip()[:100]
             price = float(x.get('price') or 0)
-            extra = price - base_price
+            cost = float(x.get('cost') or 0)
             stock = max(0, int(x.get('stock') or 0))
             image_rel = None
             f = request.files.get(f'v_image_{idx}')
@@ -336,7 +456,7 @@ def admin_new_product():
                 f.save(os.path.join(uf, 'products', fname))
                 image_rel = f'products/{fname}'[:512]
             pv = ProductVariant(
-                product_id=product.id, local_id=idx + 1, name=name, extra_price=extra,
+                product_id=product.id, local_id=idx + 1, name=name, price=price, cost=cost,
                 image=image_rel, sort_order=idx, stock=stock,
             )
             db.session.add(pv)
@@ -369,6 +489,9 @@ def admin_edit_product(product_id):
                 raw_list = json.loads(variants_text) if variants_text else []
             except Exception:
                 raw_list = []
+            if not raw_list:
+                flash('请至少添加一个规格', 'error')
+                return render_template('admin/product_form.html', product=product)
             ProductVariant.query.filter_by(product_id=product.id).delete()
             if raw_list:
                 prices = [float(x.get('price') or 0) for x in raw_list if (x.get('price') is not None)]
@@ -381,7 +504,7 @@ def admin_edit_product(product_id):
                 for idx, x in enumerate(raw_list):
                     name = (x.get('name') or '').strip()[:100]
                     price = float(x.get('price') or 0)
-                    extra = price - base_price
+                    cost = float(x.get('cost') or 0)
                     stock = max(0, int(x.get('stock') or 0))
                     image_rel = x.get('image_existing') or request.form.get(f'v_image_existing_{idx}')
                     f = request.files.get(f'v_image_{idx}')
@@ -390,7 +513,7 @@ def admin_edit_product(product_id):
                         f.save(os.path.join(uf, 'products', fname))
                         image_rel = f'products/{fname}'[:512]
                     pv = ProductVariant(
-                        product_id=product.id, local_id=idx + 1, name=name, extra_price=extra,
+                        product_id=product.id, local_id=idx + 1, name=name, price=price, cost=cost,
                         image=image_rel[:512] if image_rel else None, sort_order=idx, stock=stock,
                     )
                     db.session.add(pv)

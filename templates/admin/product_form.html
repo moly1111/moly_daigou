@@ -66,13 +66,13 @@
                                 <div class="col-md-2">
                                     <div class="input-group">
                                         <span class="input-group-text">¥</span>
-                                        <input type="number" class="form-control" name="v_price" value="{{ '%.2f'|format((product.price_rmb|float) + ((v.extra_price or 0)|float)) }}" step="0.01" placeholder="展示价">
+                                        <input type="number" class="form-control" name="v_price" value="{{ '%.2f'|format((v.price|default(product.price_rmb)|float)) }}" step="0.01" placeholder="展示价">
                                     </div>
                                 </div>
                                 <div class="col-md-2">
                                     <div class="input-group">
                                         <span class="input-group-text">¥</span>
-                                        <input type="number" class="form-control" name="v_cost" value="{{ '%.2f'|format((product.cost_price_rmb or 0)|float) }}" step="0.01" placeholder="购入价">
+                                        <input type="number" class="form-control" name="v_cost" value="{{ '%.2f'|format((v.cost|default(product.cost_price_rmb)|float)) }}" step="0.01" placeholder="购入价">
                                     </div>
                                 </div>
                                 <div class="col-md-1">

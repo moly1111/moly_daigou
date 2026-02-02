@@ -74,7 +74,8 @@ class Product(db.Model):
                 'id': v.id,
                 'local_id': getattr(v, 'local_id', None) or (i + 1),
                 'name': v.name,
-                'extra_price': float(v.extra_price or 0),
+                'price': float(getattr(v, 'price', None) or self.price_rmb or 0),
+                'cost': float(getattr(v, 'cost', None) or self.cost_price_rmb or 0),
                 'image': v.image,
                 'stock': getattr(v, 'stock', 0),
             }
@@ -82,24 +83,32 @@ class Product(db.Model):
         ]
 
     def get_min_display_price(self):
-        """最低展示价（含规格加价）。"""
-        base = float(self.price_rmb or 0)
+        """最低展示价。"""
         vlist = self.variants_list
         if not vlist:
-            return base
+            return float(self.price_rmb or 0)
         try:
-            return min(base + float(v.get('extra_price') or 0) for v in vlist)
+            return min(float(v.get('price') or self.price_rmb or 0) for v in vlist)
         except (TypeError, ValueError):
-            return base
+            return float(self.price_rmb or 0)
 
-    def get_variant_extra_price(self, variant_name):
-        """根据规格名返回加价，无则 0。"""
+    def get_variant_price(self, variant_name):
+        """根据规格名返回展示价，无则商品底价。"""
         if not variant_name:
-            return 0
+            return float(self.price_rmb or 0)
         for v in self.product_variants or []:
             if v.name == variant_name:
-                return float(v.extra_price or 0)
-        return 0
+                return float(getattr(v, 'price', None) or self.price_rmb or 0)
+        return float(self.price_rmb or 0)
+
+    def get_variant_cost(self, variant_name):
+        """根据规格名返回购入价，无则商品最低成本。"""
+        if not variant_name:
+            return float(self.cost_price_rmb or 0)
+        for v in self.product_variants or []:
+            if v.name == variant_name:
+                return float(getattr(v, 'cost', None) or self.cost_price_rmb or 0)
+        return float(self.cost_price_rmb or 0)
 
     def get_variant_by_id(self, variant_id):
         """根据规格全局 id 返回 ProductVariant，无则 None。"""
@@ -121,22 +130,27 @@ class Product(db.Model):
 
 
 class ProductVariant(db.Model):
-    """商品规格表：每个规格一行，支持独立库存。id 为全局主键；local_id 为「按商品从 1 开始的逻辑编号」。"""
+    """商品规格表：每个规格一行，直接存展示价与购入价。"""
     __tablename__ = 'product_variant'
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id', ondelete='CASCADE'), nullable=False)
     local_id = db.Column(db.Integer, nullable=False, default=1)  # 该商品下的规格逻辑编号：1, 2, 3...
     name = db.Column(db.String(100), nullable=False)
-    extra_price = db.Column(db.Numeric(10, 2), default=0)
+    price = db.Column(db.Numeric(10, 2), nullable=False, default=0)   # 对外展示价
+    cost = db.Column(db.Numeric(10, 2), nullable=False, default=0)    # 采购/购入价
     image = db.Column(db.String(512))
     sort_order = db.Column(db.Integer, default=0)
     stock = db.Column(db.Integer, default=0)
 
     __table_args__ = (db.UniqueConstraint('product_id', 'local_id', name='uq_product_variant_product_local'),)
 
-    def get_display_price(self, product):
-        """展示价 = 商品底价 + 规格加价。"""
-        return float(product.price_rmb or 0) + float(self.extra_price or 0)
+    def get_display_price(self, product=None):
+        """展示价（直接存储）。"""
+        return float(self.price or 0)
+
+    def get_cost(self):
+        """购入价（直接存储）。"""
+        return float(self.cost or 0)
 
 
 class Order(db.Model):

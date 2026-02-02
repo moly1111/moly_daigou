@@ -108,8 +108,10 @@ def fill_order_items_unit_price(order):
             continue
         if it.variant_id and it.variant:
             it.unit_price = it.variant.get_display_price(p)
+            it.unit_cost = it.variant.get_cost()
         else:
-            it.unit_price = float(p.price_rmb or 0) + p.get_variant_extra_price(it.variant_name)
+            it.unit_price = p.get_variant_price(it.variant_name)
+            it.unit_cost = p.get_variant_cost(it.variant_name)
 
 
 def restore_order_stock(order):

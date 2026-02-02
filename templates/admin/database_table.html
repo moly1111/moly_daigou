@@ -1,6 +1,21 @@
 {% extends "admin/base.html" %}
 {% block title %}{{ label }} - 数据库 - 后台管理 - Moly代购网站{% endblock %}
-{% block page_title %}数据库 · {{ label }}（只读）{% endblock %}
+{% block page_title %}数据库 · {{ label }}{% if db_edit_mode %}<span class="badge bg-success ms-2">编辑模式 · 双击单元格修改</span>{% else %}（只读）{% endif %}{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex align-items-center gap-2">
+    {% if db_edit_mode %}
+    <span class="text-success small"><i class="bi bi-check-circle"></i> 已开启编辑</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="exitEditBtn">退出编辑</button>
+    {% else %}
+    <div class="input-group input-group-sm" style="max-width: 220px;">
+        <input type="password" class="form-control" id="dbPasswordInput" placeholder="数据库编辑密码" autocomplete="off">
+        <button type="button" class="btn btn-outline-primary" id="dbVerifyBtn"><i class="bi bi-lock"></i> 验证</button>
+    </div>
+    <span id="dbVerifyMsg" class="small text-danger"></span>
+    {% endif %}
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="mb-3">
@@ -10,21 +25,25 @@
 </div>
 <div class="card">
     <div class="card-body">
-        <p class="text-muted small mb-3">表 <code>{{ tablename }}</code>，共 {{ pagination.total }} 条，当前第 {{ pagination.page }} / {{ pagination.pages }} 页。</p>
+        <p class="text-muted small mb-3">表 <code>{{ tablename }}</code>，共 {{ pagination.total }} 条，当前第 {{ pagination.page }} / {{ pagination.pages }} 页。{% if db_edit_mode %}<span class="text-success">不可编辑：主键(id)、password_hash</span>{% endif %}</p>
         <div class="table-responsive">
-            <table class="table table-bordered table-sm table-hover">
+            <table class="table table-bordered table-sm table-hover" id="dbTable">
                 <thead class="table-light">
                     <tr>
                         {% for col in columns %}
+                        {% if col != '_pk' %}
                         <th>{{ col }}</th>
+                        {% endif %}
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
-                    <tr>
+                    <tr data-pk="{{ row._pk }}">
                         {% for col in columns %}
-                        <td class="text-break" style="max-width: 280px;">{{ row[col] }}</td>
+                        {% if col != '_pk' %}
+                        <td class="text-break {% if db_edit_mode and col not in non_editable_cols %}db-editable-cell{% endif %}" style="max-width: 280px;" data-col="{{ col }}" data-original="{{ row[col] if row[col] is not none else '' }}">{{ row[col] }}</td>
+                        {% endif %}
                         {% endfor %}
                     </tr>
                     {% endfor %}
@@ -54,4 +73,112 @@
         {% endif %}
     </div>
 </div>
+{% block extra_css %}
+<style>
+.db-editable-cell { cursor: pointer; }
+.db-editable-cell:hover { background-color: #f0f8ff !important; }
+</style>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function(){
+    const UPDATE_URL = {{ url_for('admin.admin_database_update_cell', tablename=tablename) | tojson }};
+    const verifyBtn = document.getElementById('dbVerifyBtn');
+    const pwdInput = document.getElementById('dbPasswordInput');
+    const msgEl = document.getElementById('dbVerifyMsg');
+    const exitBtn = document.getElementById('exitEditBtn');
+    if (verifyBtn && pwdInput) {
+        verifyBtn.addEventListener('click', async function(){
+            msgEl.textContent = '';
+            const pwd = pwdInput.value.trim();
+            if (!pwd) { msgEl.textContent = '请输入密码'; return; }
+            try {
+                const r = await fetch('{{ url_for('admin.admin_database_verify_password') }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: pwd}),
+                    credentials: 'same-origin'
+                });
+                const d = await r.json();
+                if (d.ok) location.reload();
+                else msgEl.textContent = d.error || '验证失败';
+            } catch (e) { msgEl.textContent = '请求失败'; }
+        });
+        pwdInput.addEventListener('keydown', function(e){ if (e.key==='Enter') verifyBtn.click(); });
+    }
+    if (exitBtn) {
+        exitBtn.addEventListener('click', async function(){
+            try {
+                const r = await fetch('{{ url_for('admin.admin_database_exit_edit') }}', { method: 'POST' });
+                const d = await r.json();
+                if (d.ok) location.reload();
+            } catch (e) {}
+        });
+    }
+    // 双击编辑：用 data-original 作为恢复源（服务端渲染，避免 JS 读取偏差）
+    document.querySelectorAll('.db-editable-cell').forEach(function(td){
+        td.addEventListener('dblclick', function(){
+            const pk = this.closest('tr').dataset.pk;
+            const col = this.dataset.col;
+            const originalVal = (td.dataset.original ?? this.textContent ?? '').toString();
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control form-control-sm';
+            input.value = originalVal;
+            input.style.width = '100%';
+            input.style.minWidth = '80px';
+            td.textContent = '';
+            td.appendChild(input);
+            input.focus();
+            input.select();
+            let finished = false;
+            function restore(){
+                const val = (td.dataset.original ?? '').toString();
+                td.replaceChildren(document.createTextNode(val));
+            }
+            function finish(){
+                if (finished) return;
+                finished = true;
+                const newVal = (input.value ?? '').toString();
+                input.remove();
+                if (newVal === originalVal) {
+                    restore();
+                    return;
+                }
+                td.textContent = '保存中...';
+                fetch(UPDATE_URL, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pk: pk, column: col, value: newVal}),
+                    credentials: 'same-origin'
+                }).then(r=>r.json()).then(d=>{
+                    if (d.ok) {
+                        const displayVal = (d.value !== undefined && d.value !== null) ? String(d.value) : newVal;
+                        td.replaceChildren(document.createTextNode(displayVal));
+                        td.dataset.original = displayVal;
+                    } else {
+                        restore();
+                        alert(d.error || '保存失败');
+                    }
+                }).catch(function(){
+                    restore();
+                    alert('请求失败');
+                });
+            }
+            function cancel(){
+                if (finished) return;
+                finished = true;
+                input.remove();
+                restore();
+            }
+            input.addEventListener('blur', function(){ finish(); });
+            input.addEventListener('keydown', function(e){
+                if (e.key==='Enter') { e.preventDefault(); input.blur(); }
+                if (e.key==='Escape') { e.preventDefault(); cancel(); }
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}
 {% endblock %}
