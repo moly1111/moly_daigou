@@ -18,7 +18,7 @@
 - **发货清单**：待发货按批次聚合（同日期同用户）、填快递号标记发货、已发货列表、邮件通知客户
 - **用户管理**：创建用户、封禁/解封、编辑、删除
 - **仓储可视化**：按商品/规格查看库存；**趋势**：近 1/7/30 天销量 Top 10 与柱状图
-- **数据库**：只读查看所有表
+- **数据库**：只读查看所有表；验证密码后可双击单元格编辑数据
 - 仪表盘、基础设置、版本管理
 
 ### 其他
@@ -100,21 +100,28 @@ python app.py
 
 ## 环境变量
 
-在项目根目录创建 `.env`（参考 `.env.example`）：
+在项目根目录创建 `.env`（参考 `.env.example`，内含完整注释）：
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `SECRET_KEY` | 是 | 应用密钥，请使用足够随机的长字符串 |
+| `SECRET_KEY` | 是 | 会话加密密钥，生产环境务必使用随机长字符串 |
 | `ADMIN_USERNAME` | 是 | 管理员登录用户名 |
 | `ADMIN_PASSWORD` | 是 | 管理员登录密码（将做 hash 存储） |
 | `DATABASE_URL` | 否 | 数据库 URL，默认 `sqlite:///daigou.db` |
-| `FLASK_DEBUG` / `FLASK_ENV` | 否 | 开发时可设为 `1` / `development` |
-| `UPLOAD_FOLDER` | 否 | 上传目录，默认 `static/uploads` |
+| `FLASK_ENV` | 否 | 运行环境：`development` / `production` |
+| `FLASK_DEBUG` | 否 | 调试模式，开发时可设为 `True` |
+| `SMTP_SERVER` | 否 | SMTP 服务器地址 |
+| `SMTP_PORT` | 否 | SMTP 端口（465=SSL，587=TLS） |
+| `SENDER_EMAIL` | 否 | 发件人邮箱 |
+| `SENDER_PASSWORD` | 否 | 发件人邮箱授权码（非登录密码） |
+| `DEFAULT_RECEIVER_EMAIL` | 否 | 默认收件人（测试或系统通知） |
 | `MAX_CONTENT_LENGTH` | 否 | 上传大小限制（字节），默认约 50MB |
-| `SMTP_*` / `SENDER_*` | 否 | 邮件配置（验证码、通知） |
+| `UPLOAD_FOLDER` | 否 | 上传目录，默认 `static/uploads` |
+| `TIMEZONE` | 否 | 系统时区，默认 `Asia/Shanghai` |
 | `RFID_API_KEY` | 否 | RFID 入库 API 密钥，不配置则接口返回 401 |
+| `DATABASE_PASSWORD` | 否 | 数据库编辑模式密码，配置后在后台可双击修改数据 |
 
-说明：管理员仅允许 `ADMIN_USERNAME` 对应的账号登录；RFID 接口鉴权使用 Header `X-API-Key` 或 query `api_key`。
+说明：管理员仅允许 `ADMIN_USERNAME` 对应账号登录；RFID 接口鉴权使用 Header `X-API-Key` 或 query `api_key`。
 
 ## 数据与目录
 
