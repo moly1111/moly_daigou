@@ -45,7 +45,12 @@
       <button class="btn btn-primary" type="submit"><i class="bi bi-cart-plus"></i> 加入购物车</button>
     </form>
     {% else %}
-    <div class="alert alert-secondary">该商品当前不可购买</div>
+    <div class="alert alert-secondary">
+      该商品当前不可购买，请先
+      <a href="{{ url_for('frontend.register') }}" class="link-primary text-decoration-none">注册</a>
+      或
+      <a href="{{ url_for('frontend.login') }}" class="link-primary text-decoration-none">登录</a>
+    </div>
     {% endif %}
   </div>
 </div>
