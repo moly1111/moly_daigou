@@ -32,9 +32,15 @@
                         </div>
                         <div class="mt-1 small text-muted">销量：{{ (sales_map.get(p.id) if sales_map else 0) or 0 }}</div>
                         <div class="mt-2 d-flex">
+                            {% if p.status == 'up' %}
                             <a class="btn btn-sm btn-outline-primary w-100" href="{{ url_for('frontend.product_detail', product_id=p.id) }}">
                                 <i class="bi bi-eye"></i> 查看详情
                             </a>
+                            {% else %}
+                            <button class="btn btn-sm btn-outline-secondary w-100" type="button" disabled title="该商品已下架，暂不可查看详情">
+                                <i class="bi bi-eye-slash"></i> 已下架
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

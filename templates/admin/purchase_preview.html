@@ -45,63 +45,77 @@
   </div>
   <div class="card-body">
     <div class="tab-content">
-      <!-- 待发货：按批次聚合 -->
+      <!-- 待发货：按用户聚合，订单地址逐单展示 -->
       <div class="tab-pane fade show active" id="tab-pending" role="tabpanel">
         {% if pending_groups %}
           {% for group in pending_groups %}
           <div class="card border mb-3">
             <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div>
-                <span class="fw-bold">批次</span>
-                <span class="text-muted">{{ group.date|default('未知日期') }}</span>
+                <span class="fw-bold">用户</span>
                 <span class="ms-2">{{ group.user.email }}</span>
-                {% if group.address %}
-                <span class="ms-2 small">{{ group.address.name }} {{ group.address.phone }}</span>
-                <span class="ms-2 small text-muted">{{ group.address.address_text }}</span>
-                {% endif %}
               </div>
-              <span class="badge bg-secondary">订单：{{ group.order_nos|join('、') }}</span>
+              <span class="badge bg-secondary">订单数：{{ group['orders']|length }}</span>
             </div>
             <div class="card-body">
-              <div class="table-responsive mb-3">
-                <table class="table table-bordered table-sm mb-0">
-                  <thead>
-                    <tr>
-                      <th>订单号</th>
-                      <th>商品名称</th>
-                      <th>规格</th>
-                      <th>数量</th>
-                      <th>来源</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for order in group.orders %}
-                      {% for item in order.items %}
-                      <tr>
-                        <td><code>{{ order.order_no }}</code></td>
-                        <td>{{ title_map.get(item.product_id, item.name) if item.product_id else item.name }}</td>
-                        <td>{{ item.variant_name or item.spec_note or '-' }}</td>
-                        <td>{{ item.qty }}</td>
-                        <td>{{ '商品库' if item.product_id else '自定义' }}</td>
-                      </tr>
-                      {% endfor %}
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
               <form method="post" action="{{ url_for('admin.admin_orders_mark_shipped') }}" class="row g-2 align-items-end">
                 <input type="hidden" name="start_date" value="{{ start_date }}">
                 <input type="hidden" name="end_date" value="{{ end_date }}">
                 <input type="hidden" name="keyword" value="{{ keyword }}">
-                {% for order in group.orders %}
-                <input type="hidden" name="order_id" value="{{ order.id }}">
-                {% endfor %}
+                <div class="col-12">
+                  {% for row in group['orders'] %}
+                  <div class="card mb-2">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <div>
+                        <code>{{ row['order'].order_no }}</code>
+                        <span class="ms-2 text-muted">{{ row['order'].created_at|cn_time('%Y-%m-%d %H:%M') }}</span>
+                      </div>
+                      <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('admin.admin_order_detail', order_no=row['order'].order_no) }}">订单详情</a>
+                    </div>
+                    <div class="card-body py-2">
+                      {% if row['address'] %}
+                      <div class="small mb-2">
+                        <strong>当前地址：</strong>{{ row['address'].name }} {{ row['address'].phone }}
+                        <span class="text-muted ms-2">{{ row['address'].address_text }}</span>
+                      </div>
+                      {% else %}
+                      <div class="small text-danger mb-2">用户当前未设置地址，请先人工确认</div>
+                      {% endif %}
+                      <div class="table-responsive">
+                        <table class="table table-bordered table-sm mb-0">
+                          <thead>
+                            <tr>
+                              <th style="width:42px;"><input type="checkbox" class="form-check-input" onclick="this.closest('.card').querySelectorAll('input[name=\'item_id\']').forEach(c=>c.checked=this.checked)"></th>
+                              <th>商品名称</th>
+                              <th>规格</th>
+                              <th>待发数量</th>
+                              <th>来源</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {% for entry in row['items'] %}
+                            {% set item = entry.item %}
+                            <tr>
+                              <td><input type="checkbox" class="form-check-input" name="item_id" value="{{ item.id }}"></td>
+                              <td>{{ title_map.get(item.product_id, item.name) if item.product_id else item.name }}</td>
+                              <td>{{ item.variant_name or item.spec_note or '-' }}</td>
+                              <td>{{ entry.remain }}</td>
+                              <td>{{ '商品库' if item.product_id else '自定义' }}</td>
+                            </tr>
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
                 <div class="col-auto">
                   <label class="form-label mb-0">快递单号</label>
                   <input type="text" name="tracking_number" class="form-control form-control-sm" placeholder="必填" required maxlength="100">
                 </div>
                 <div class="col-auto">
-                  <button type="submit" class="btn btn-primary btn-sm">标记发货</button>
+                  <button type="submit" class="btn btn-primary btn-sm">标记所选商品发货</button>
                 </div>
               </form>
             </div>
@@ -130,14 +144,15 @@
             </thead>
             <tbody>
               {% for order in shipped_orders %}
+              {% set recv = order.receiver_display %}
               <tr>
                 <td>{{ order.shipped_at|cn_time('%Y-%m-%d %H:%M') if order.shipped_at else '-' }}</td>
                 <td><code>{{ order.order_no }}</code></td>
                 <td>{{ order.tracking_number or '-' }}</td>
                 <td>{{ order.user.email }}</td>
-                <td>{{ order.user.address.name if order.user.address else '-' }}</td>
-                <td>{{ order.user.address.phone if order.user.address else '-' }}</td>
-                <td>{{ order.user.address.address_text if order.user.address else '-' }}</td>
+                <td>{{ recv.name or '-' }}</td>
+                <td>{{ recv.phone or '-' }}</td>
+                <td>{{ recv.address_text or '-' }}</td>
               </tr>
               {% endfor %}
             </tbody>

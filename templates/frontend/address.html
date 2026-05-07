@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8 col-lg-6">
+    <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">
@@ -12,13 +12,16 @@
                 </h5>
             </div>
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" class="border rounded p-3 mb-4">
+                    <input type="hidden" name="action" value="save">
+                    <input type="hidden" name="address_id" value="{{ editing.id if editing else '' }}">
+                    <h6 class="mb-3">{{ '编辑地址' if editing else '新增地址' }}</h6>
                     <div class="mb-3">
                         <label for="name" class="form-label">
                             <i class="bi bi-person"></i> 收货人姓名
                         </label>
                         <input type="text" class="form-control" id="name" name="name" 
-                               value="{{ address.name if address else '' }}" 
+                               value="{{ editing.name if editing else '' }}" 
                                maxlength="30" required>
                         <div class="form-text">1-30个字符</div>
                     </div>
@@ -28,7 +31,7 @@
                             <i class="bi bi-telephone"></i> 手机号码
                         </label>
                         <input type="tel" class="form-control" id="phone" name="phone" 
-                               value="{{ address.phone if address else '' }}" 
+                               value="{{ editing.phone if editing else '' }}" 
                                minlength="11" maxlength="20" required>
                         <div class="form-text">11-20位数字，可包含+号</div>
                     </div>
@@ -38,7 +41,7 @@
                             <i class="bi bi-house"></i> 详细地址
                         </label>
                         <textarea class="form-control" id="address_text" name="address_text" 
-                                  rows="3" maxlength="200" required>{{ address.address_text if address else '' }}</textarea>
+                                  rows="3" maxlength="200" required>{{ editing.address_text if editing else '' }}</textarea>
                         <div class="form-text">最多200个字符</div>
                     </div>
 
@@ -47,36 +50,60 @@
                             <i class="bi bi-mailbox"></i> 邮政编码
                         </label>
                         <input type="text" class="form-control" id="postal_code" name="postal_code" 
-                               value="{{ address.postal_code if address else '' }}" 
+                               value="{{ editing.postal_code if editing else '' }}" 
                                maxlength="10">
                         <div class="form-text">可选，最多10个字符</div>
                     </div>
 
-                    <div class="d-grid">
+                    <div class="d-flex gap-2 justify-content-end">
+                        {% if editing %}
+                        <a href="{{ url_for('frontend.profile_address') }}" class="btn btn-outline-secondary">取消编辑</a>
+                        {% endif %}
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> 保存地址
+                            <i class="bi bi-check-circle"></i> {{ '保存修改' if editing else '新增地址' }}
                         </button>
                     </div>
                 </form>
 
-                {% if address %}
                 <div class="mt-4">
-                    <h6 class="text-muted">当前地址信息：</h6>
-                    <div class="card bg-light">
-                        <div class="card-body">
-                            <p class="mb-1"><strong>收货人：</strong>{{ address.name }}</p>
-                            <p class="mb-1"><strong>手机号：</strong>{{ address.phone }}</p>
-                            <p class="mb-1"><strong>地址：</strong>{{ address.address_text }}</p>
-                            {% if address.postal_code %}
-                            <p class="mb-0"><strong>邮编：</strong>{{ address.postal_code }}</p>
-                            {% endif %}
-                            <small class="text-muted">
-                                最后更新：{{ address.updated_at.strftime('%Y-%m-%d %H:%M') if address.updated_at else '未知' }}
-                            </small>
+                    <h6 class="text-muted">我的地址列表：</h6>
+                    {% if addresses %}
+                    {% for addr in addresses %}
+                    <div class="card bg-light mb-2">
+                        <div class="card-body d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <p class="mb-1"><strong>收货人：</strong>{{ addr.name }} {% if addr.is_default %}<span class="badge bg-primary ms-2">默认</span>{% endif %}</p>
+                                <p class="mb-1"><strong>手机号：</strong>{{ addr.phone }}</p>
+                                <p class="mb-1"><strong>地址：</strong>{{ addr.address_text }}</p>
+                                {% if addr.postal_code %}
+                                <p class="mb-1"><strong>邮编：</strong>{{ addr.postal_code }}</p>
+                                {% endif %}
+                                <small class="text-muted">
+                                    最后更新：{{ addr.updated_at.strftime('%Y-%m-%d %H:%M') if addr.updated_at else '未知' }}
+                                </small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('frontend.profile_address', edit_id=addr.id) }}">编辑</a>
+                                {% if not addr.is_default %}
+                                <form method="POST" class="d-inline">
+                                    <input type="hidden" name="action" value="set_default">
+                                    <input type="hidden" name="address_id" value="{{ addr.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">设为默认</button>
+                                </form>
+                                {% endif %}
+                                <form method="POST" class="d-inline" onsubmit="return confirm('确认删除该地址？')">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="address_id" value="{{ addr.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
+                                </form>
+                            </div>
                         </div>
                     </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-muted">还没有保存任何地址，请先新增。</div>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>

@@ -11,6 +11,24 @@
     </div>
 
     {% if cart_items %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <label class="form-label mb-2"><i class="bi bi-geo-alt"></i> 选择收货地址</label>
+        {% if addresses %}
+        <select id="checkoutAddress" class="form-select">
+          {% for addr in addresses %}
+          <option value="{{ addr.id }}" {% if default_address and addr.id == default_address.id %}selected{% endif %}>
+            {{ addr.name }} / {{ addr.phone }} / {{ addr.address_text }}{% if addr.is_default %}（默认）{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <div class="alert alert-warning mb-0">
+          你还没有收货地址，请先前往 <a href="{{ url_for('frontend.profile_address') }}">地址管理</a> 添加地址后再提交订单。
+        </div>
+        {% endif %}
+      </div>
+    </div>
     <div class="table-responsive">
       <table class="table align-middle" id="cartTable" style="table-layout: fixed;">
         <thead>
@@ -137,6 +155,11 @@ document.addEventListener('DOMContentLoaded', recalcSelected);
 
 // 结算收集选中项后提交
 document.getElementById('checkoutBtn')?.addEventListener('click', () => {
+  const addrSel = document.getElementById('checkoutAddress');
+  if (addrSel && !addrSel.value) {
+    alert('请先选择收货地址');
+    return;
+  }
   const ids = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.value);
   if (ids.length === 0) {
     alert('请先选择要结算的商品');
@@ -152,6 +175,13 @@ document.getElementById('checkoutBtn')?.addEventListener('click', () => {
     input.value = id;
     form.appendChild(input);
   });
+  if (addrSel && addrSel.value) {
+    const a = document.createElement('input');
+    a.type = 'hidden';
+    a.name = 'address_id';
+    a.value = addrSel.value;
+    form.appendChild(a);
+  }
   document.body.appendChild(form);
   form.submit();
 });

@@ -28,8 +28,18 @@ class User(UserMixin, db.Model):
     last_login_at = db.Column(db.DateTime)
     is_banned = db.Column(db.Boolean, default=False)
 
-    address = db.relationship('Address', backref='user', uselist=False)
+    addresses = db.relationship('Address', backref='user', lazy=True, cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='user', lazy=True)
+
+    @property
+    def address(self):
+        """兼容旧代码：优先返回默认地址，其次返回最新地址。"""
+        if not self.addresses:
+            return None
+        defaults = [a for a in self.addresses if getattr(a, 'is_default', False)]
+        if defaults:
+            return sorted(defaults, key=lambda x: x.updated_at or datetime.min, reverse=True)[0]
+        return sorted(self.addresses, key=lambda x: x.updated_at or datetime.min, reverse=True)[0]
 
     def get_id(self):  # type: ignore[override]
         return f"user:{self.id}"
@@ -42,6 +52,7 @@ class Address(db.Model):
     phone = db.Column(db.String(20), nullable=False)
     address_text = db.Column(db.String(200), nullable=False)
     postal_code = db.Column(db.String(10))
+    is_default = db.Column(db.Boolean, default=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -171,9 +182,31 @@ class Order(db.Model):
     internal_notes = db.Column(db.Text)
     tracking_number = db.Column(db.String(100))
     shipped_at = db.Column(db.DateTime)
+    receiver_name = db.Column(db.String(30))
+    receiver_phone = db.Column(db.String(20))
+    receiver_address_text = db.Column(db.String(200))
+    receiver_postal_code = db.Column(db.String(10))
 
     items = db.relationship('OrderItem', backref='order', lazy=True)
     payment_attachments = db.relationship('PaymentAttachment', backref='order', lazy=True)
+
+    @property
+    def receiver_display(self):
+        """订单收货信息快照；旧订单回退到用户当前地址。"""
+        if self.receiver_name or self.receiver_phone or self.receiver_address_text:
+            return {
+                'name': self.receiver_name or '',
+                'phone': self.receiver_phone or '',
+                'address_text': self.receiver_address_text or '',
+                'postal_code': self.receiver_postal_code or '',
+            }
+        addr = self.user.address if self.user else None
+        return {
+            'name': addr.name if addr else '',
+            'phone': addr.phone if addr else '',
+            'address_text': addr.address_text if addr else '',
+            'postal_code': addr.postal_code if addr else '',
+        }
 
 
 class OrderItem(db.Model):
@@ -189,6 +222,9 @@ class OrderItem(db.Model):
     variant_name = db.Column(db.String(100))
     unit_price = db.Column(db.Numeric(10, 2))
     unit_cost = db.Column(db.Numeric(10, 2))
+    shipped_qty = db.Column(db.Integer, default=0)
+    shipped_tracking_number = db.Column(db.String(100))
+    shipped_at = db.Column(db.DateTime)
 
     variant = db.relationship('ProductVariant', backref='order_items', foreign_keys=[variant_id])
 

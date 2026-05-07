@@ -3,8 +3,10 @@ from datetime import datetime
 import os
 import random
 import string
+import mimetypes
+from typing import Optional
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, send_file
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -15,6 +17,42 @@ from core.utils import admin_required
 chat_bp = Blueprint('chat', __name__)
 
 
+def _private_chat_dir():
+    base = current_app.config.get('PRIVATE_UPLOAD_FOLDER', os.path.join('instance', 'private_uploads'))
+    return os.path.join(base, 'chat')
+
+
+def _chat_media_key(filename: str) -> str:
+    return f"/private/chat/{filename}"
+
+
+def _secure_media_url(message_id: int, media_type: str) -> str:
+    return url_for('chat.chat_media', message_id=message_id, media_type=media_type)
+
+
+def _resolve_media_abs_path(stored_path: str) -> Optional[str]:
+    if not stored_path:
+        return None
+    old_prefix = '/static/uploads/chat/'
+    private_prefix = '/private/chat/'
+    upload_chat_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'chat')
+    private_chat_dir = _private_chat_dir()
+
+    if stored_path.startswith(private_prefix):
+        filename = os.path.basename(stored_path[len(private_prefix):])
+        return os.path.join(private_chat_dir, filename)
+    if stored_path.startswith(old_prefix):
+        filename = os.path.basename(stored_path[len(old_prefix):])
+        return os.path.join(upload_chat_dir, filename)
+    filename = os.path.basename(stored_path)
+    if not filename:
+        return None
+    private_candidate = os.path.join(private_chat_dir, filename)
+    if os.path.isfile(private_candidate):
+        return private_candidate
+    return os.path.join(upload_chat_dir, filename)
+
+
 def _save_chat_image(file_storage):
     if not file_storage or file_storage.filename == '':
         return None
@@ -23,11 +61,11 @@ def _save_chat_image(file_storage):
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     rnd = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     final_name = f"{ts}_{rnd}.{ext}"
-    save_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'chat')
+    save_dir = _private_chat_dir()
     os.makedirs(save_dir, exist_ok=True)
     path = os.path.join(save_dir, final_name)
     file_storage.save(path)
-    return f"/static/uploads/chat/{final_name}"
+    return _chat_media_key(final_name)
 
 
 def _save_chat_file(file_storage):
@@ -52,11 +90,11 @@ def _save_chat_file(file_storage):
         if guessed:
             filename = f"{filename}.{guessed}"
     final_name = f"{ts}_{rnd}_{filename}"
-    save_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'chat')
+    save_dir = _private_chat_dir()
     os.makedirs(save_dir, exist_ok=True)
     path = os.path.join(save_dir, final_name)
     file_storage.save(path)
-    return f"/static/uploads/chat/{final_name}", filename, file_storage.mimetype
+    return _chat_media_key(final_name), filename, file_storage.mimetype
 
 
 def _message_to_dict(m):
@@ -65,12 +103,39 @@ def _message_to_dict(m):
         'id': m.id,
         'sender': m.sender,
         'text': m.text,
-        'image_path': m.image_path,
-        'file_path': m.file_path,
+        'image_path': _secure_media_url(m.id, 'image') if m.image_path else None,
+        'file_path': _secure_media_url(m.id, 'file') if m.file_path else None,
         'file_name': m.file_name,
         'file_mime': m.file_mime,
         'created_at': m.created_at.isoformat(),
     }
+
+
+def _attach_secure_urls(messages):
+    for m in messages:
+        m.image_url = _secure_media_url(m.id, 'image') if m.image_path else None
+        m.file_url = _secure_media_url(m.id, 'file') if m.file_path else None
+    return messages
+
+
+@chat_bp.get('/chat/media/<int:message_id>/<media_type>')
+@login_required
+def chat_media(message_id: int, media_type: str):
+    if media_type not in ('image', 'file'):
+        abort(404)
+    msg = ChatMessage.query.get_or_404(message_id)
+    if not isinstance(current_user, AdminUser) and msg.user_id != current_user.id:
+        abort(403)
+    stored_path = msg.image_path if media_type == 'image' else msg.file_path
+    if not stored_path:
+        abort(404)
+    abs_path = _resolve_media_abs_path(stored_path)
+    if not abs_path or not os.path.isfile(abs_path):
+        abort(404)
+    mimetype = msg.file_mime if media_type == 'file' else (mimetypes.guess_type(abs_path)[0] or 'application/octet-stream')
+    as_attachment = media_type == 'file'
+    download_name = msg.file_name if media_type == 'file' else os.path.basename(abs_path)
+    return send_file(abs_path, mimetype=mimetype, as_attachment=as_attachment, download_name=download_name)
 
 
 # ---------- 用户端 ----------
@@ -97,6 +162,7 @@ def chat_page():
             db.session.commit()
         return redirect(url_for('chat.chat_page'))
     messages = ChatMessage.query.filter_by(user_id=current_user.id).order_by(ChatMessage.created_at.asc()).limit(100).all()
+    _attach_secure_urls(messages)
     ChatMessage.query.filter_by(user_id=current_user.id, sender='admin', is_read_by_user=False).update({ChatMessage.is_read_by_user: True})
     db.session.commit()
     return render_template('frontend/chat.html', messages=messages)
@@ -181,6 +247,7 @@ def admin_chat_detail(user_id: int):
             db.session.commit()
         return redirect(url_for('chat.admin_chat_detail', user_id=user.id))
     messages = ChatMessage.query.filter_by(user_id=user.id).order_by(ChatMessage.created_at.asc()).all()
+    _attach_secure_urls(messages)
     ChatMessage.query.filter_by(user_id=user.id, sender='user', is_read_by_admin=False).update({ChatMessage.is_read_by_admin: True})
     db.session.commit()
     return render_template('admin/chat_detail.html', user=user, messages=messages)

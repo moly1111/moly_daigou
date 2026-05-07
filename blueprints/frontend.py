@@ -70,7 +70,9 @@ def cart_page():
         else:
             unit = p.get_variant_price(ci.variant_name)
         display.append({'item': ci, 'product': p, 'unit_price': unit, 'subtotal': unit * ci.qty})
-    return render_template('frontend/cart.html', cart_items=display)
+    addresses = Address.query.filter_by(user_id=current_user.id).order_by(Address.is_default.desc(), Address.updated_at.desc()).all()
+    default_address = next((a for a in addresses if a.is_default), addresses[0] if addresses else None)
+    return render_template('frontend/cart.html', cart_items=display, addresses=addresses, default_address=default_address)
 
 
 @frontend.route('/cart/add/<int:product_id>', methods=['POST'])
@@ -170,7 +172,12 @@ def cart_checkout():
     if not ids:
         flash('请先选择要结算的商品', 'error')
         return redirect(url_for('frontend.cart_page'))
-    addr = getattr(current_user, 'address', None)
+    address_id = request.form.get('address_id', type=int)
+    addr = None
+    if address_id:
+        addr = Address.query.filter_by(id=address_id, user_id=current_user.id).first()
+    if not addr:
+        addr = getattr(current_user, 'address', None)
     if not addr or not addr.name or not addr.phone or not addr.address_text:
         flash('请先完善收货地址（收货人、手机号、地址），再提交订单', 'error')
         return redirect(url_for('frontend.profile_address'))
@@ -213,7 +220,11 @@ def cart_checkout():
         user_id=current_user.id,
         amount_items=amount_items,
         amount_shipping=amount_shipping,
-        amount_due=amount_items + amount_shipping
+        amount_due=amount_items + amount_shipping,
+        receiver_name=addr.name,
+        receiver_phone=addr.phone,
+        receiver_address_text=addr.address_text,
+        receiver_postal_code=addr.postal_code,
     )
     db.session.add(order)
     db.session.flush()
@@ -340,20 +351,58 @@ def logout():
 @user_required
 def profile_address():
     if request.method == 'POST':
-        name = request.form['name']
-        phone = request.form['phone']
-        address_text = request.form['address_text']
-        postal_code = request.form.get('postal_code', '')
-        if current_user.address:
-            addr = current_user.address
+        action = (request.form.get('action') or 'save').strip()
+        addr_id = request.form.get('address_id', type=int)
+        if action == 'set_default':
+            addr = Address.query.filter_by(id=addr_id, user_id=current_user.id).first()
+            if not addr:
+                flash('地址不存在', 'error')
+                return redirect(url_for('frontend.profile_address'))
+            Address.query.filter_by(user_id=current_user.id).update({'is_default': False})
+            addr.is_default = True
+            db.session.commit()
+            flash('默认地址已更新', 'success')
+            return redirect(url_for('frontend.profile_address'))
+        if action == 'delete':
+            addr = Address.query.filter_by(id=addr_id, user_id=current_user.id).first()
+            if not addr:
+                flash('地址不存在', 'error')
+                return redirect(url_for('frontend.profile_address'))
+            was_default = bool(addr.is_default)
+            db.session.delete(addr)
+            db.session.flush()
+            if was_default:
+                next_addr = Address.query.filter_by(user_id=current_user.id).order_by(Address.updated_at.desc()).first()
+                if next_addr:
+                    next_addr.is_default = True
+            db.session.commit()
+            flash('地址已删除', 'success')
+            return redirect(url_for('frontend.profile_address'))
+        name = request.form['name'].strip()
+        phone = request.form['phone'].strip()
+        address_text = request.form['address_text'].strip()
+        postal_code = request.form.get('postal_code', '').strip()
+        addr = Address.query.filter_by(id=addr_id, user_id=current_user.id).first() if addr_id else None
+        if addr:
             addr.name, addr.phone, addr.address_text, addr.postal_code = name, phone, address_text, postal_code
         else:
-            addr = Address(user_id=current_user.id, name=name, phone=phone, address_text=address_text, postal_code=postal_code)
+            has_any = Address.query.filter_by(user_id=current_user.id).count() > 0
+            addr = Address(
+                user_id=current_user.id,
+                name=name,
+                phone=phone,
+                address_text=address_text,
+                postal_code=postal_code,
+                is_default=not has_any,
+            )
             db.session.add(addr)
         db.session.commit()
         flash('地址保存成功', 'success')
         return redirect(url_for('frontend.profile_address'))
-    return render_template('frontend/address.html', address=current_user.address)
+    addresses = Address.query.filter_by(user_id=current_user.id).order_by(Address.is_default.desc(), Address.updated_at.desc()).all()
+    edit_id = request.args.get('edit_id', type=int)
+    editing = next((a for a in addresses if a.id == edit_id), None)
+    return render_template('frontend/address.html', addresses=addresses, editing=editing)
 
 
 @frontend.route('/orders')

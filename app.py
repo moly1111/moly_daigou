@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 from core.utils import require_env, get_setting, set_setting, register_filters
 from core.extensions import db, migrate, login_manager
-from core.models import User, AdminUser
+from core.models import User, AdminUser, Address
 
 # 强制校验环境变量
 _SECRET_KEY = require_env('SECRET_KEY', forbidden_values=['your-secret-key-change-in-production'])
@@ -25,12 +25,14 @@ app.config['SECRET_KEY'] = _SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///daigou.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'static/uploads')
+app.config['PRIVATE_UPLOAD_FOLDER'] = os.getenv('PRIVATE_UPLOAD_FOLDER', os.path.join('instance', 'private_uploads'))
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', '52428800'))
 app.config['DATABASE_PASSWORD'] = (os.getenv('DATABASE_PASSWORD') or '').strip()
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 for sub in ('products', 'payments', 'qrcodes', 'covers', 'chat'):
     os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], sub), exist_ok=True)
+os.makedirs(os.path.join(app.config['PRIVATE_UPLOAD_FOLDER'], 'chat'), exist_ok=True)
 
 db.init_app(app)
 migrate.init_app(app, db)
@@ -47,6 +49,70 @@ app.register_blueprint(frontend)
 app.register_blueprint(admin_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(api_rfid)
+
+
+def _ensure_compat_columns():
+    """兼容旧数据库：按需补齐新增列。"""
+    from sqlalchemy import inspect, text
+    with app.app_context():
+        def _cols(table):
+            try:
+                return [c['name'] for c in inspect(db.engine).get_columns(table)]
+            except Exception:
+                return []
+
+        order_item_cols = set(_cols('order_item'))
+        for col, spec in [
+            ('shipped_qty', 'INTEGER DEFAULT 0'),
+            ('shipped_tracking_number', 'VARCHAR(100)'),
+            ('shipped_at', 'DATETIME'),
+        ]:
+            if col not in order_item_cols:
+                try:
+                    db.session.execute(text(f'ALTER TABLE order_item ADD COLUMN {col} {spec}'))
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.debug('检查/添加列 order_item.%s 失败: %s', col, e)
+
+        order_cols = set(_cols('order'))
+        for col, spec in [
+            ('receiver_name', 'VARCHAR(30)'),
+            ('receiver_phone', 'VARCHAR(20)'),
+            ('receiver_address_text', 'VARCHAR(200)'),
+            ('receiver_postal_code', 'VARCHAR(10)'),
+        ]:
+            if col not in order_cols:
+                try:
+                    db.session.execute(text(f'ALTER TABLE "order" ADD COLUMN {col} {spec}'))
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.debug('检查/添加列 order.%s 失败: %s', col, e)
+
+        address_cols = set(_cols('address'))
+        if 'is_default' not in address_cols:
+            try:
+                db.session.execute(text('ALTER TABLE address ADD COLUMN is_default BOOLEAN DEFAULT 0'))
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.debug('检查/添加列 address.is_default 失败: %s', e)
+
+        # 兼容历史数据：每个用户至少有一个默认地址
+        try:
+            user_ids = [r[0] for r in db.session.query(Address.user_id).distinct().all()]
+            for uid in user_ids:
+                addrs = Address.query.filter_by(user_id=uid).order_by(Address.updated_at.desc(), Address.id.desc()).all()
+                if addrs and not any(bool(a.is_default) for a in addrs):
+                    addrs[0].is_default = True
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.debug('初始化默认地址失败: %s', e)
+
+
+_ensure_compat_columns()
 
 
 @login_manager.user_loader

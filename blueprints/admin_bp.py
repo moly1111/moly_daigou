@@ -15,7 +15,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, login_user, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
 
 from core.extensions import db
 from core.models import (
@@ -695,7 +695,7 @@ def admin_user_new():
         if name and phone and address_text:
             db.session.add(Address(
                 user_id=user.id, name=name, phone=phone,
-                address_text=address_text, postal_code=postal_code
+                address_text=address_text, postal_code=postal_code, is_default=True
             ))
         db.session.commit()
         flash('用户已创建', 'success')
@@ -708,6 +708,11 @@ def admin_user_new():
 @admin_required
 def admin_user_edit(user_id: int):
     user = User.query.get_or_404(user_id)
+    def _render():
+        addresses = Address.query.filter_by(user_id=user.id).order_by(Address.is_default.desc(), Address.updated_at.desc()).all()
+        edit_id = request.args.get('edit_id', type=int)
+        editing_address = next((a for a in addresses if a.id == edit_id), None)
+        return render_template('admin/user_form.html', user=user, addresses=addresses, editing_address=editing_address)
     if request.method == 'POST':
         email = request.form['email'].strip()
         username = request.form.get('username', '').strip()
@@ -715,18 +720,18 @@ def admin_user_edit(user_id: int):
         new_password = request.form.get('password', '').strip()
         if not is_valid_email(email):
             flash('邮箱格式不正确', 'error')
-            return render_template('admin/user_form.html', user=user)
+            return _render()
         if User.query.filter(User.email == email, User.id != user.id).first():
             flash('该邮箱已被使用', 'error')
-            return render_template('admin/user_form.html', user=user)
+            return _render()
         if username:
             import re
             if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
                 flash('用户名只能包含字母、数字和下划线，长度3-20位', 'error')
-                return render_template('admin/user_form.html', user=user)
+                return _render()
             if User.query.filter(User.username == username, User.id != user.id).first():
                 flash('该用户名已被使用', 'error')
-                return render_template('admin/user_form.html', user=user)
+                return _render()
         user.email = email
         user.username = username if username else None
         user.notes = notes if notes else None
@@ -735,7 +740,7 @@ def admin_user_edit(user_id: int):
         db.session.commit()
         flash('用户信息已更新', 'success')
         return redirect(url_for('admin.admin_users'))
-    return render_template('admin/user_form.html', user=user)
+    return _render()
 
 
 @admin_bp.route('/admin/users/<int:user_id>/edit-address', methods=['POST'])
@@ -743,13 +748,41 @@ def admin_user_edit(user_id: int):
 @admin_required
 def admin_user_edit_address(user_id: int):
     user = User.query.get_or_404(user_id)
-    name, phone = request.form['name'], request.form['phone']
-    address_text, postal_code = request.form['address_text'], request.form.get('postal_code', '')
-    if user.address:
-        addr = user.address
+    action = (request.form.get('action') or 'save').strip()
+    addr_id = request.form.get('address_id', type=int)
+    if action == 'set_default':
+        addr = Address.query.filter_by(id=addr_id, user_id=user.id).first()
+        if not addr:
+            flash('地址不存在', 'error')
+            return redirect(url_for('admin.admin_user_edit', user_id=user.id))
+        Address.query.filter_by(user_id=user.id).update({'is_default': False})
+        addr.is_default = True
+        db.session.commit()
+        flash('默认地址已更新', 'success')
+        return redirect(url_for('admin.admin_user_edit', user_id=user.id))
+    if action == 'delete':
+        addr = Address.query.filter_by(id=addr_id, user_id=user.id).first()
+        if not addr:
+            flash('地址不存在', 'error')
+            return redirect(url_for('admin.admin_user_edit', user_id=user.id))
+        was_default = bool(addr.is_default)
+        db.session.delete(addr)
+        db.session.flush()
+        if was_default:
+            nxt = Address.query.filter_by(user_id=user.id).order_by(Address.updated_at.desc()).first()
+            if nxt:
+                nxt.is_default = True
+        db.session.commit()
+        flash('地址已删除', 'success')
+        return redirect(url_for('admin.admin_user_edit', user_id=user.id))
+    name, phone = request.form['name'].strip(), request.form['phone'].strip()
+    address_text, postal_code = request.form['address_text'].strip(), request.form.get('postal_code', '').strip()
+    addr = Address.query.filter_by(id=addr_id, user_id=user.id).first() if addr_id else None
+    if addr:
         addr.name, addr.phone, addr.address_text, addr.postal_code = name, phone, address_text, postal_code
     else:
-        db.session.add(Address(user_id=user.id, name=name, phone=phone, address_text=address_text, postal_code=postal_code))
+        has_any = Address.query.filter_by(user_id=user.id).count() > 0
+        db.session.add(Address(user_id=user.id, name=name, phone=phone, address_text=address_text, postal_code=postal_code, is_default=not has_any))
     db.session.commit()
     flash('地址已保存', 'success')
     return redirect(url_for('admin.admin_user_edit', user_id=user.id))
@@ -760,8 +793,8 @@ def admin_user_edit_address(user_id: int):
 @admin_required
 def admin_user_delete(user_id: int):
     user = User.query.get_or_404(user_id)
-    if user.address:
-        db.session.delete(user.address)
+    for addr in list(user.addresses):
+        db.session.delete(addr)
     for order in list(user.orders):
         for item in list(order.items):
             db.session.delete(item)
@@ -972,41 +1005,71 @@ def _purchase_list_filters(orders_q, start_date, end_date, keyword):
     return orders_q
 
 
+def _ensure_order_item_shipping_columns():
+    """兼容旧库：按需补齐订单项发货字段。"""
+    try:
+        cols = {c['name'] for c in inspect(db.engine).get_columns('order_item')}
+    except Exception:
+        cols = set()
+    to_add = []
+    if 'shipped_qty' not in cols:
+        to_add.append('ALTER TABLE order_item ADD COLUMN shipped_qty INTEGER DEFAULT 0')
+    if 'shipped_tracking_number' not in cols:
+        to_add.append('ALTER TABLE order_item ADD COLUMN shipped_tracking_number VARCHAR(100)')
+    if 'shipped_at' not in cols:
+        to_add.append('ALTER TABLE order_item ADD COLUMN shipped_at DATETIME')
+    for stmt in to_add:
+        try:
+            db.session.execute(text(stmt))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def _item_shipped_qty(item):
+    return max(0, int(getattr(item, 'shipped_qty', 0) or 0))
+
+
 @admin_bp.route('/admin/purchase-list', methods=['GET'])
 @login_required
 @admin_required
 def admin_purchase_preview():
+    _ensure_order_item_shipping_columns()
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     keyword = request.args.get('q', '')
-    # 待发货：已付款、处理中、未发货，按「同一天+同一用户」聚合（同批发往同一地址）
+    # 待发货：已付款、处理中，按「同一用户」聚合；地址按每个订单独立展示，由管理员人工确认
     pending_q = Order.query.filter(
         Order.is_paid == True,
         Order.status == 'processing',
-        Order.shipped_at.is_(None),
     )
     pending_q = _purchase_list_filters(pending_q, start_date, end_date, keyword)
     pending_orders = pending_q.order_by(Order.created_at.asc()).all()
     from collections import defaultdict
     groups = defaultdict(list)
     for o in pending_orders:
-        key = (o.created_at.date() if o.created_at else None, o.user_id)
-        groups[key].append(o)
+        groups[o.user_id].append(o)
     pending_groups = []
     product_ids = set()
-    for (day, uid), orders in sorted(groups.items(), key=lambda x: (x[0][0] or datetime.min.date(), x[0][1])):
+    for uid, orders in sorted(groups.items(), key=lambda x: x[0]):
         o0 = orders[0]
-        user, addr = o0.user, o0.user.address
+        user = o0.user
+        order_rows = []
         for o in orders:
+            selectable_items = []
             for it in o.items:
                 if it.product_id:
                     product_ids.add(it.product_id)
+                remain = max(0, int(it.qty or 0) - _item_shipped_qty(it))
+                if remain > 0:
+                    selectable_items.append({'item': it, 'remain': remain})
+            if selectable_items:
+                order_rows.append({'order': o, 'address': o.receiver_display, 'items': selectable_items})
+        if not order_rows:
+            continue
         pending_groups.append({
-            'date': day,
             'user': user,
-            'address': addr,
-            'orders': orders,
-            'order_nos': [o.order_no for o in orders],
+            'orders': order_rows,
         })
     title_map = product_id_to_title_map(product_ids) if product_ids else {}
     # 已发货：已填写快递并标记发货的订单
@@ -1043,38 +1106,67 @@ def _purchase_preview_redirect(start_date=None, end_date=None, keyword=None):
 @login_required
 @admin_required
 def admin_orders_mark_shipped():
-    """将一批订单标记为已发货，填写快递号并发送邮件。"""
-    order_ids = request.form.getlist('order_id', type=int)
+    """将勾选的订单商品项标记为已发货（支持部分发货）。"""
+    _ensure_order_item_shipping_columns()
+    item_ids = request.form.getlist('item_id', type=int)
     tracking = (request.form.get('tracking_number') or '').strip()
     start_date = request.form.get('start_date') or ''
     end_date = request.form.get('end_date') or ''
     keyword = request.form.get('keyword') or ''
-    if not order_ids:
-        flash('请选择要发货的订单', 'error')
+    if not item_ids:
+        flash('请至少勾选一个商品项再发货', 'error')
         return _purchase_preview_redirect(start_date, end_date, keyword)
     if not tracking:
         flash('请填写快递单号', 'error')
         return _purchase_preview_redirect(start_date, end_date, keyword)
-    orders = Order.query.filter(Order.id.in_(order_ids), Order.is_paid == True, Order.shipped_at.is_(None)).all()
-    if not orders:
-        flash('未找到可发货的订单或订单已发货', 'error')
+    items = db.session.query(OrderItem).join(Order, OrderItem.order_id == Order.id).filter(
+        OrderItem.id.in_(item_ids),
+        Order.is_paid == True,
+        Order.status.in_(['processing', 'done']),
+    ).all()
+    if not items:
+        flash('未找到可发货的商品项', 'error')
         return _purchase_preview_redirect(start_date, end_date, keyword)
     now = datetime.utcnow()
-    for o in orders:
-        o.tracking_number = tracking[:100]
-        o.shipped_at = now
-        o.status = 'done'
-        o.completed_at = now
+    touched_orders = {}
+    shipped_count = 0
+    for it in items:
+        remain = max(0, int(it.qty or 0) - _item_shipped_qty(it))
+        if remain <= 0:
+            continue
+        it.shipped_qty = int(it.qty or 0)
+        it.shipped_tracking_number = tracking[:100]
+        it.shipped_at = now
+        touched_orders[it.order_id] = it.order
+        shipped_count += 1
+    if shipped_count <= 0:
+        flash('勾选项均已发货，无需重复操作', 'warning')
+        return _purchase_preview_redirect(start_date, end_date, keyword)
+    for o in touched_orders.values():
+        all_shipped = True
+        for it in o.items:
+            if int(it.qty or 0) > _item_shipped_qty(it):
+                all_shipped = False
+                break
+        if all_shipped:
+            o.tracking_number = tracking[:100]
+            o.shipped_at = now
+            o.status = 'done'
+            o.completed_at = now
+        else:
+            o.status = 'processing'
+            o.shipped_at = None
+            o.completed_at = None
         try:
             send_email(
                 f"您的订单 {o.order_no} 已发货",
-                f"您好，\n\n您的订单 {o.order_no} 已发货。\n快递单号：{tracking}\n\n请留意查收。",
+                f"您好，\n\n您的订单 {o.order_no} 有商品已发货。\n快递单号：{tracking}\n\n请留意查收。",
                 o.user.email,
             )
         except Exception as e:
             logger.warning("发货通知邮件发送失败 %s: %s", o.user.email, e)
     db.session.commit()
-    flash(f'已标记 {len(orders)} 个订单为已发货，快递单号：{tracking}，已发送邮件通知', 'success')
+    flash(f'已标记 {shipped_count} 个商品项发货，快递单号：{tracking}', 'success')
     return _purchase_preview_redirect(start_date, end_date, keyword)
 
 
@@ -1109,10 +1201,11 @@ def admin_purchase_download():
     writer = csv.writer(output)
     writer.writerow(['订单号', '下单时间', '用户邮箱', '收货人', '手机号', '地址', '商品名称', '规格', '数量', '来源'])
     for order in orders_list:
-        user, addr = order.user, order.user.address
-        receiver = addr.name if addr else ''
-        phone = addr.phone if addr else ''
-        addr_text = addr.address_text if addr else ''
+        user = order.user
+        addr = order.receiver_display
+        receiver = addr.get('name', '')
+        phone = addr.get('phone', '')
+        addr_text = addr.get('address_text', '')
         for item in order.items:
             display_name = title_map.get(item.product_id, item.name) if item.product_id else item.name
             spec = item.variant_name or item.spec_note or ''

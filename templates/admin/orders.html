@@ -94,17 +94,18 @@
                         <td>{{ order.created_at|cn_time }}</td>
                         <td>{{ order.user.email }}</td>
                         <td>
-                            {% if order.user.address %}
-                                {{ order.user.address.name }}<br>
-                                <small class="text-muted">{{ order.user.address.phone[:3] }}****{{ order.user.address.phone[-4:] }}</small>
+                            {% set recv = order.receiver_display %}
+                            {% if recv.name %}
+                                {{ recv.name }}<br>
+                                <small class="text-muted">{{ recv.phone[:3] }}****{{ recv.phone[-4:] if recv.phone and recv.phone|length >= 7 else recv.phone }}</small>
                             {% else %}
                                 <span class="text-muted">未设置</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% if order.user.address %}
-                                <span title="{{ order.user.address.address_text }}">
-                                    {{ order.user.address.address_text[:20] }}{% if order.user.address.address_text|length > 20 %}...{% endif %}
+                            {% if recv.address_text %}
+                                <span title="{{ recv.address_text }}">
+                                    {{ recv.address_text[:20] }}{% if recv.address_text|length > 20 %}...{% endif %}
                                 </span>
                             {% else %}
                                 <span class="text-muted">未设置</span>

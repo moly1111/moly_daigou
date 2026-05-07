@@ -17,14 +17,14 @@
         {% if m.text %}
         <div class="p-2 rounded" style="background: var(--bs-secondary-bg);">{{ m.text }}</div>
         {% endif %}
-        {% if m.image_path %}
+        {% if m.image_url %}
         <div class="mt-2">
-          <img src="{{ m.image_path }}" alt="chat-image" style="max-width: 240px; cursor: zoom-in;" />
+          <img src="{{ m.image_url }}" alt="chat-image" style="max-width: 240px; cursor: zoom-in;" />
         </div>
         {% endif %}
-        {% if m.file_path %}
+        {% if m.file_url %}
         <div class="mt-2">
-          <a href="{{ m.file_path }}" download="{{ m.file_name or 'download' }}" target="_blank">
+          <a href="{{ m.file_url }}" download="{{ m.file_name or 'download' }}" target="_blank">
             <i class="bi bi-paperclip"></i> {{ m.file_name or '下载文件' }}
           </a>
         </div>
