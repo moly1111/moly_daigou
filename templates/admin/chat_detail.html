@@ -31,12 +31,12 @@
   {% endfor %}
 </div>
 
-<form method="POST" enctype="multipart/form-data" class="d-flex gap-2 chat-send-bar">
+<form id="chatForm" method="POST" enctype="multipart/form-data" class="d-flex gap-2 chat-send-bar">
   <input type="text" name="text" class="form-control" placeholder="输入回复...">
   <button id="imgBtn" class="btn btn-outline-secondary" type="button" title="发送图片"><i class="bi bi-image"></i></button>
   <input id="msgImage" type="file" name="image" accept="image/*" class="d-none">
   <input type="file" name="file" class="form-control" style="max-width: 260px;">
-  <button class="btn btn-primary" type="submit">发送</button>
+  <button id="sendBtn" class="btn btn-primary" type="submit">发送</button>
   </form>
 {% endblock %}
 
@@ -100,6 +100,30 @@ setInterval(fetchNew, 3000);
 // 图片按钮触发
 document.getElementById('imgBtn')?.addEventListener('click', ()=>{
   document.getElementById('msgImage')?.click();
+});
+
+// 管理端普通表单提交：防止快速连点重复发送
+document.getElementById('chatForm')?.addEventListener('submit', function(e){
+  if (window.__chatSending) {
+    e.preventDefault();
+    return;
+  }
+  const form = e.currentTarget;
+  const textEl = form.querySelector('input[name="text"]');
+  const imageEl = form.querySelector('input[name="image"]');
+  const fileEl = form.querySelector('input[name="file"]');
+  const hasText = !!(textEl && textEl.value.trim());
+  const hasImage = !!(imageEl && imageEl.files && imageEl.files[0]);
+  const hasFile = !!(fileEl && fileEl.files && fileEl.files[0]);
+  if (!hasText && !hasImage && !hasFile) {
+    e.preventDefault();
+    return;
+  }
+  window.__chatSending = true;
+  const sendBtn = document.getElementById('sendBtn');
+  const imgBtn = document.getElementById('imgBtn');
+  if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = '发送中...'; }
+  if(imgBtn){ imgBtn.disabled = true; }
 });
 </script>
 {% endblock %}

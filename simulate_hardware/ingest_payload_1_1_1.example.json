@@ -1,0 +1,20 @@
+{
+  "_comment": "与 upload.py 1 1 1 发送内容一致：商品id=1，逻辑规格编号=1，数量=1。API 亦接受 {\"rfid\": \"...\"} 与 data 等价。",
+  "method": "POST",
+  "url": "http://127.0.0.1:5000/api/rfid/ingest",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-API-Key": "请填写与服务器 .env 中 RFID_API_KEY 相同的值（与 device_config.txt 第一行一致）"
+  },
+  "body": {
+    "data": "1;L:1;1"
+  },
+  "body_raw_utf8": "{\"data\": \"1;L:1;1\"}",
+  "payload_plain": "1;L:1;1",
+  "payload_fields": {
+    "product_id": 1,
+    "variant_logical": 1,
+    "quantity": 1,
+    "variant_encoding": "L:1 表示该商品下第 1 个规格（与 upload.py 默认一致）"
+  }
+}

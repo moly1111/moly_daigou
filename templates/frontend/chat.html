@@ -38,7 +38,7 @@
       <button id="imgBtn" class="btn btn-outline-secondary" type="button" title="发送图片"><i class="bi bi-image"></i></button>
       <input id="msgImage" type="file" name="image" accept="image/*" class="d-none">
       <input id="msgFile" type="file" name="file" class="form-control" style="max-width: 260px;">
-      <button class="btn btn-primary" type="submit">发送</button>
+      <button id="sendBtn" class="btn btn-primary" type="submit">发送</button>
     </form>
   </div>
 </div>
@@ -105,8 +105,11 @@ setInterval(fetchNew, 3000);
 // AJAX 发送后追加并滚到底
 document.getElementById('chatForm')?.addEventListener('submit', async (e)=>{
   e.preventDefault();
+  if (window.__chatSending) return;
   try{
     const form = new FormData();
+    const sendBtn = document.getElementById('sendBtn');
+    const imgBtn = document.getElementById('imgBtn');
     const t = document.getElementById('msgText');
     const f = document.getElementById('msgImage');
     const g = document.getElementById('msgFile');
@@ -115,6 +118,9 @@ document.getElementById('chatForm')?.addEventListener('submit', async (e)=>{
     if(f.files && f.files[0]){ form.append('image', f.files[0]); }
     if(g.files && g.files[0]){ form.append('file', g.files[0]); }
     if(!text && !(f.files && f.files[0]) && !(g.files && g.files[0])) return;
+    window.__chatSending = true;
+    if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = '发送中...'; }
+    if(imgBtn){ imgBtn.disabled = true; }
     const res = await fetch('{{ url_for('chat.api_chat_send_user') }}', { method:'POST', body: form, credentials:'same-origin' });
     if(!res.ok) return;
     const m = await res.json();
@@ -133,6 +139,13 @@ document.getElementById('chatForm')?.addEventListener('submit', async (e)=>{
     t.value=''; if(f) f.value=''; if(g) g.value='';
     scrollToBottom();
   }catch(err){}
+  finally{
+    window.__chatSending = false;
+    const sendBtn = document.getElementById('sendBtn');
+    const imgBtn = document.getElementById('imgBtn');
+    if(sendBtn){ sendBtn.disabled = false; sendBtn.textContent = '发送'; }
+    if(imgBtn){ imgBtn.disabled = false; }
+  }
 });
 
 // 图片按钮触发隐藏的选择框

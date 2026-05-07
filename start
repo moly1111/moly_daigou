@@ -1,5 +1,38 @@
 #!/bin/bash
-# Moly 代购 - 启动脚本
+# Moly 代购 - 启动并自动打开页面
+set -e
+
 cd "$(dirname "$0")"
+
+# 端口可在这里修改，也可通过命令行参数覆盖：./start 8000
+PORT="${1:-5000}"
+
+if [ ! -d "venv" ]; then
+  echo "未找到虚拟环境 venv，请先创建并安装依赖。"
+  exit 1
+fi
+
 source venv/bin/activate
-python app.py
+
+BASE_URL="http://127.0.0.1:${PORT}"
+
+open_url() {
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${BASE_URL}" >/dev/null 2>&1 || true
+  elif command -v open >/dev/null 2>&1; then
+    open "${BASE_URL}" >/dev/null 2>&1 || true
+  elif command -v explorer.exe >/dev/null 2>&1; then
+    explorer.exe "${BASE_URL}" >/dev/null 2>&1 || true
+  else
+    echo "未检测到可用浏览器启动命令，请手动打开：${BASE_URL}"
+  fi
+}
+
+echo "启动项目，端口：${PORT}"
+echo "前台地址：${BASE_URL}"
+echo "后台地址：${BASE_URL}/admin"
+
+# 后台异步打开浏览器，避免阻塞主进程
+(sleep 1; open_url) &
+
+PORT="${PORT}" python app.py

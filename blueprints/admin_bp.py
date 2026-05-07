@@ -6,6 +6,7 @@ import io
 import csv
 import random
 import string
+import secrets
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -362,6 +363,15 @@ def _upload_folder():
     return current_app.config['UPLOAD_FOLDER']
 
 
+def _unique_image_filename(original_filename: str) -> str:
+    """生成高唯一性的图片文件名，避免同秒同名覆盖。"""
+    safe = secure_filename(original_filename or '')
+    ext = safe.rsplit('.', 1)[1].lower() if '.' in safe else 'jpg'
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    rand = secrets.token_hex(4)
+    return f"{ts}_{rand}.{ext}"
+
+
 @admin_bp.route('/admin/products')
 @login_required
 @admin_required
@@ -420,7 +430,7 @@ def admin_new_product():
             uf = _upload_folder()
             for file in request.files.getlist('images'):
                 if file and file.filename and allowed_file(file.filename):
-                    filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+                    filename = _unique_image_filename(file.filename)
                     file.save(os.path.join(uf, 'products', filename))
                     uploaded_images.append(f'products/{filename}')
         variants_text = request.form.get('variants_text', '').strip()
@@ -450,9 +460,10 @@ def admin_new_product():
             cost = float(x.get('cost') or 0)
             stock = max(0, int(x.get('stock') or 0))
             image_rel = None
-            f = request.files.get(f'v_image_{idx}')
+            row_uid = (x.get('row_uid') or f'row{idx}').strip()
+            f = request.files.get(f'v_image_{row_uid}') or request.files.get(f'v_image_{idx}')
             if f and f.filename and allowed_file(f.filename):
-                fname = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(f.filename)
+                fname = _unique_image_filename(f.filename)
                 f.save(os.path.join(uf, 'products', fname))
                 image_rel = f'products/{fname}'[:512]
             pv = ProductVariant(
@@ -506,10 +517,11 @@ def admin_edit_product(product_id):
                     price = float(x.get('price') or 0)
                     cost = float(x.get('cost') or 0)
                     stock = max(0, int(x.get('stock') or 0))
-                    image_rel = x.get('image_existing') or request.form.get(f'v_image_existing_{idx}')
-                    f = request.files.get(f'v_image_{idx}')
+                    row_uid = (x.get('row_uid') or f'row{idx}').strip()
+                    image_rel = x.get('image_existing') or request.form.get(f'v_image_existing_{row_uid}') or request.form.get(f'v_image_existing_{idx}')
+                    f = request.files.get(f'v_image_{row_uid}') or request.files.get(f'v_image_{idx}')
                     if f and f.filename and allowed_file(f.filename):
-                        fname = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(f.filename)
+                        fname = _unique_image_filename(f.filename)
                         f.save(os.path.join(uf, 'products', fname))
                         image_rel = f'products/{fname}'[:512]
                     pv = ProductVariant(
@@ -522,7 +534,7 @@ def admin_edit_product(product_id):
                 uf = _upload_folder()
                 for file in request.files.getlist('images'):
                     if file and file.filename and allowed_file(file.filename):
-                        filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+                        filename = _unique_image_filename(file.filename)
                         file.save(os.path.join(uf, 'products', filename))
                         new_images.append(f'products/{filename}')
                 if new_images:
@@ -586,7 +598,7 @@ def admin_product_upload_image(product_id: int):
     if not file or not file.filename or not allowed_file(file.filename):
         return jsonify({'ok': False, 'msg': '请选择有效图片'}), 400
     try:
-        filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+        filename = _unique_image_filename(file.filename)
         filepath = os.path.join(_upload_folder(), 'products', filename)
         file.save(filepath)
         rel = f'products/{filename}'
@@ -1232,7 +1244,7 @@ def admin_update_cover():
     if 'cover' in request.files:
         file = request.files['cover']
         if file and file.filename and allowed_file(file.filename):
-            filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+            filename = _unique_image_filename(file.filename)
             file.save(os.path.join(_upload_folder(), 'covers', filename))
             set_setting('cover_image', f'covers/{filename}')
             flash('封面已更新', 'success')
@@ -1250,7 +1262,7 @@ def admin_update_wechat_qr():
     if 'wechat_qr' in request.files:
         file = request.files['wechat_qr']
         if file and file.filename and allowed_file(file.filename):
-            filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+            filename = _unique_image_filename(file.filename)
             file.save(os.path.join(_upload_folder(), 'qrcodes', filename))
             set_setting('wechat_qr', f'qrcodes/{filename}')
             flash('微信二维码已更新', 'success')
@@ -1269,13 +1281,13 @@ def admin_update_qrcodes():
     if 'alipay_qr' in request.files:
         file = request.files['alipay_qr']
         if file and file.filename and allowed_file(file.filename):
-            filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+            filename = _unique_image_filename(file.filename)
             file.save(os.path.join(uf, 'qrcodes', filename))
             set_setting('alipay_qrcode', f'qrcodes/{filename}')
     if 'wechat_qr' in request.files:
         file = request.files['wechat_qr']
         if file and file.filename and allowed_file(file.filename):
-            filename = datetime.now().strftime('%Y%m%d_%H%M%S_') + secure_filename(file.filename)
+            filename = _unique_image_filename(file.filename)
             file.save(os.path.join(uf, 'qrcodes', filename))
             set_setting('wechat_qrcode', f'qrcodes/{filename}')
     flash('收款二维码更新成功', 'success')

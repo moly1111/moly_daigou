@@ -119,6 +119,30 @@
                 </div>
             </div>
         </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">热销商品 TOP5（已付款）</h6>
+            </div>
+            <div class="card-body py-2">
+                {% if top_rows %}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle">
+                        <thead>
+                            <tr><th>商品</th><th class="text-end">销量</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for title, qty in top_rows %}
+                            <tr><td>{{ title }}</td><td class="text-end">{{ qty }}</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-muted py-2">暂无数据</div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <div class="col-lg-4">
@@ -183,29 +207,4 @@
     </div>
 </div>
 
-<div class="row mt-4">
-  <div class="col-lg-12">
-    <div class="card shadow">
-      <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">热销商品 TOP5（已付款）</h6>
-      </div>
-      <div class="card-body">
-        {% if top_rows %}
-        <div class="table-responsive">
-          <table class="table table-sm">
-            <thead><tr><th>商品</th><th>销量</th></tr></thead>
-            <tbody>
-              {% for title, qty in top_rows %}
-              <tr><td>{{ title }}</td><td>{{ qty }}</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <div class="text-muted">暂无数据</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}

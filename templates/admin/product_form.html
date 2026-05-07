@@ -45,23 +45,36 @@
                           .variant-row{ background: var(--bs-light); border: 1px dashed var(--bs-border-color, #dee2e6); border-radius: .5rem; padding: .5rem .75rem; }
                           .variant-row .form-control{ background-color: #fff; }
                           .variant-head{ color: #6c757d; font-size: .85rem; }
+                          .variant-name-wrap{ display:flex; align-items:center; gap:.5rem; }
+                          .variant-name-wrap .badge{ flex: 0 0 auto; }
+                          .variant-name-wrap .form-control{ min-width: 0; }
+                          .variant-image-col .form-control{ min-width: 150px; }
+                          .variant-image-actions{ display:flex; justify-content:space-between; align-items:center; gap:.5rem; min-height:40px; }
+                          .variant-image-actions img{ height:36px; width:36px; object-fit:cover; flex:0 0 auto; }
+                          @media (max-width: 991.98px){
+                            .variant-image-col .form-control{ min-width: 0; }
+                          }
                         </style>
                         <div class="row variant-head gx-2 mb-1 d-none d-md-flex">
                           <div class="col-md-3">规格编号 / 名称</div>
                           <div class="col-md-2">展示价</div>
                           <div class="col-md-2">购入价</div>
                           <div class="col-md-1">库存</div>
-                          <div class="col-md-2">图片 / 操作</div>
+                          <div class="col-md-4">图片 / 操作</div>
                         </div>
                         <div id="variantList">
                             {% set vs = product.variants_list if product else [] %}
                             {% for v in vs %}
                             <div class="row g-2 align-items-start mb-2 variant-row">
                                 <input type="hidden" name="v_idx" value="{{ loop.index0 }}">
-                                <input type="hidden" name="v_image_existing_{{ loop.index0 }}" value="{{ v.image if v.image else '' }}">
+                                {% set row_uid = 'row' ~ loop.index0 %}
+                                <input type="hidden" name="v_row_uid" value="{{ row_uid }}">
+                                <input type="hidden" name="v_image_existing_{{ row_uid }}" value="{{ v.image if v.image else '' }}">
                                 <div class="col-md-3">
-                                    <span class="badge bg-secondary me-1" title="该商品下的逻辑规格编号">#{{ v.local_id }}</span>
-                                    <input class="form-control d-inline-block" style="width:calc(100% - 2.5rem)" name="v_name" value="{{ v.name }}" placeholder="如：30ml / 礼盒装">
+                                    <div class="variant-name-wrap">
+                                      <span class="badge bg-secondary" title="该商品下的逻辑规格编号">#{{ v.local_id }}</span>
+                                      <input class="form-control" name="v_name" value="{{ v.name }}" placeholder="如：30ml / 礼盒装">
+                                    </div>
                                 </div>
                                 <div class="col-md-2">
                                     <div class="input-group">
@@ -78,13 +91,13 @@
                                 <div class="col-md-1">
                                     <input type="number" class="form-control" name="v_stock" value="{{ v.stock|default(0) }}" min="0" placeholder="0">
                                 </div>
-                                <div class="col-md-2">
-                                    <input type="file" class="form-control" name="v_image_{{ loop.index0 }}" accept="image/*">
-                                    <div class="d-flex justify-content-between align-items-center mt-1">
+                                <div class="col-md-4 variant-image-col">
+                                    <input type="file" class="form-control" name="v_image_{{ row_uid }}" accept="image/*">
+                                    <div class="variant-image-actions mt-1">
                                         {% if v.image %}
                                         <img src="{{ url_for('static', filename='uploads/' + v.image) }}" style="height:36px; width:36px; object-fit:cover;" class="img-thumbnail" title="规格图片">
                                         {% endif %}
-                                        <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="removeVariant(this)">-</button>
+                                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeVariant(this)">-</button>
                                     </div>
                                 </div>
                             </div>
@@ -183,7 +196,7 @@
                 <p class="text-muted small">上传清晰的商品图片，有助于用户了解商品</p>
 
                 <h6>状态管理</h6>
-                <p class="text-muted small">上架商品用户可见，下架商品仅管理员可见</p>
+                <p class="text-muted small">上架商品正常展示并可购买；下架商品用户端仍可见，但会灰显且不可购买</p>
             </div>
         </div>
     </div>
@@ -215,9 +228,11 @@ function addVariant(){
   const row = document.createElement('div');
   row.className = 'row g-2 mb-2 variant-row';
   const idx = document.querySelectorAll('#variantList .variant-row').length;
+  const uid = `row${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   row.innerHTML = `
     <input type="hidden" name="v_idx" value="${idx}">
-    <input type="hidden" name="v_image_existing_${idx}" value="">
+    <input type="hidden" name="v_row_uid" value="${uid}">
+    <input type="hidden" name="v_image_existing_${uid}" value="">
     <div class="col-md-3">
       <input class="form-control" name="v_name" placeholder="规格名称">
     </div>
@@ -236,10 +251,11 @@ function addVariant(){
     <div class="col-md-1">
       <input type="number" class="form-control" name="v_stock" value="0" min="0" placeholder="0">
     </div>
-    <div class="col-md-2">
-      <input type="file" class="form-control" name="v_image_${idx}" accept="image/*">
-      <div class="d-flex justify-content-between align-items-center mt-1">
-        <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="removeVariant(this)">-</button>
+    <div class="col-md-4 variant-image-col">
+      <input type="file" class="form-control" name="v_image_${uid}" accept="image/*">
+      <div class="variant-image-actions mt-1">
+        <span></span>
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeVariant(this)">-</button>
       </div>
     </div>`;
   container.appendChild(row);
@@ -259,6 +275,7 @@ document.getElementById('productForm').addEventListener('submit', function(){
   const arr = [];
   let base = Infinity;
   rows.forEach(r => {
+    const rowUid = r.querySelector('input[name="v_row_uid"]')?.value || '';
     const name = r.querySelector('input[name="v_name"]').value.trim();
     const price = parseFloat(r.querySelector('input[name="v_price"]').value || '');
     const cost = parseFloat(r.querySelector('input[name="v_cost"]').value || '');
@@ -266,7 +283,14 @@ document.getElementById('productForm').addEventListener('submit', function(){
     const imageExisting = r.querySelector('input[name^="v_image_existing"]')?.value || '';
     if(name){
       if(isFinite(price)) base = Math.min(base, price);
-      arr.push({name, price: isFinite(price)?price:null, cost: isFinite(cost)?cost:null, stock: stock, image_existing: imageExisting});
+      arr.push({
+        row_uid: rowUid,
+        name,
+        price: isFinite(price)?price:null,
+        cost: isFinite(cost)?cost:null,
+        stock: stock,
+        image_existing: imageExisting
+      });
     }
   });
   document.getElementById('variants_text_hidden').value = JSON.stringify(arr);
