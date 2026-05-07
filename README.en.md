@@ -8,8 +8,9 @@ A lightweight personal shopping/daigou system: products with variants & inventor
 
 ### Storefront
 - Product browsing (multiple images, multiple variants, variant stock & price linkage)
-- Sign up / login (email verification code), shipping addresses
+- Sign up / login (email verification code), shipping addresses (multi-address + default address)
 - Cart, checkout, cancel order, upload payment proof
+- Address selection at checkout (from saved addresses)
 - Order details, shipping notification (with tracking number)
 - Light/dark theme, image zoom
 
@@ -17,14 +18,14 @@ A lightweight personal shopping/daigou system: products with variants & inventor
 - Admin login (credentials via environment variables)
 - **Product management**: images, variants (name / selling price / cost / stock / variant image), pin to top, delete
 - **Order management**: filter, create, mark as paid, change status, export shipping list
-- **Shipping list**: group pending shipments by batch (same date + same user), enter tracking number to mark shipped, shipped list, email notification
-- **User management**: create user, ban/unban, edit, delete
+- **Shipping list**: group pending shipments by user, show address per order, select one or more order items for shipping (partial shipping supported)
+- **User management**: create user, ban/unban, edit, delete, maintain multiple addresses with default address
 - **Warehouse dashboard**: inventory by product/variant; **Trends**: top-10 sales in last 1/7/30 days + bar chart
 - **Database**: read tables; after password verification, double-click cells to edit
 - Dashboard, basic settings, version management
 
 ### Others
-- **Chat**: two-way user/admin chat (text, images, files)
+- **Chat**: two-way user/admin chat (text, images, files); chat media is served via authenticated routes (not public static direct links)
 - **Scheduled jobs**: auto-cancel unpaid orders, clean expired verification codes
 - **RFID ingest API**: `POST /api/rfid/ingest`, supports `productId;variantId;qty` or `productId;L:localVariantId;qty` for hardware/simulator stock-in
 
@@ -91,6 +92,16 @@ flask db upgrade
 python app.py
 ```
 
+Or use the startup script (auto-opens browser):
+
+```bash
+# default port 5000
+./start
+
+# custom port
+./start 8000
+```
+
 ## Environment Variables
 
 Create `.env` in the project root (see `.env.example`, which contains full inline notes):
@@ -110,6 +121,7 @@ Create `.env` in the project root (see `.env.example`, which contains full inlin
 | `DEFAULT_RECEIVER_EMAIL` | No | Default receiver (testing/system notifications) |
 | `MAX_CONTENT_LENGTH` | No | Upload size limit (bytes), default ~50MB |
 | `UPLOAD_FOLDER` | No | Upload directory, default `static/uploads` |
+| `PRIVATE_UPLOAD_FOLDER` | No | Private upload directory for protected files (e.g. chat media), default `instance/private_uploads` |
 | `TIMEZONE` | No | Timezone, default `Asia/Shanghai` |
 | `RFID_API_KEY` | No | RFID ingest API key; if not set, the endpoint returns 401 |
 | `DATABASE_PASSWORD` | No | Database edit-mode password for admin UI |
@@ -119,7 +131,13 @@ Notes: Admin access is limited to the account matching `ADMIN_USERNAME`. RFID au
 ## Data & Directories
 
 - **Database**: default `instance/daigou.db` (SQLite)
-- **Uploads**: `static/uploads/` (product images, payment proofs, chat files, covers, QR codes, etc.)
+- **Public uploads**: `static/uploads/` (product images, payment proofs, covers, QR codes, etc.)
+- **Private uploads**: `instance/private_uploads/` (chat images/files, accessible only via auth-protected routes)
+
+## Database Docs
+
+- Detailed schema: `docs/DATABASE_SCHEMA_DETAIL.md`
+- Compact schema notes: `docs/DATABASE_SCHEMA.md`
 
 ## Database Migrations
 

@@ -17,6 +17,8 @@
 | last_login_at | DateTime | 最后登录时间 |
 | is_banned | Boolean | 是否封禁 |
 
+说明：当前为**多地址模型**（`user` 1:N `address`）。代码中保留 `user.address` 兼容属性，优先返回默认地址。
+
 ---
 
 ## 2. address（收货地址表）
@@ -29,6 +31,7 @@
 | phone | String(20) | 手机号 |
 | address_text | String(200) | 详细地址 |
 | postal_code | String(10) | 邮编 |
+| is_default | Boolean | 是否默认地址 |
 | updated_at | DateTime | 更新时间 |
 
 ---
@@ -91,6 +94,12 @@
 | internal_notes | Text | 内部备注 |
 | tracking_number | String(100) | 快递单号 |
 | shipped_at | DateTime | 发货时间 |
+| receiver_name | String(30) | 下单时收货人快照 |
+| receiver_phone | String(20) | 下单时手机号快照 |
+| receiver_address_text | String(200) | 下单时地址快照 |
+| receiver_postal_code | String(10) | 下单时邮编快照 |
+
+说明：订单页/发货清单应优先读取 `receiver_*` 快照，避免用户后续改地址影响历史订单。
 
 ---
 
@@ -110,6 +119,9 @@
 | variant_name | String(100) | 规格名称快照 |
 | unit_price | Numeric(10,2) | 单价（下单时快照） |
 | unit_cost | Numeric(10,2) | 单位成本（用于利润计算） |
+| shipped_qty | Integer | 已发货数量（支持部分发货） |
+| shipped_tracking_number | String(100) | 该订单项发货单号 |
+| shipped_at | DateTime | 该订单项发货时间 |
 
 ---
 
@@ -204,6 +216,8 @@
 | is_read_by_user | Boolean | 用户是否已读 |
 | is_read_by_admin | Boolean | 管理员是否已读 |
 
+说明：聊天附件文件已改为私有存储，访问通过鉴权路由，不再依赖公开静态直链。
+
 ---
 
 ## 新表结构适配检查
@@ -220,6 +234,21 @@
 | 管理员商品表单 | ✅ 保存 price/cost 到 ProductVariant |
 | 仓储可视化 | ✅ 使用 product_variants |
 | 订单创建（前台） | ✅ 写入 unit_price、unit_cost |
+| 订单地址展示 | ✅ 优先使用 Order.receiver_* 快照 |
+| 发货清单 | ✅ 支持按商品项勾选与部分发货 |
+| 用户地址管理 | ✅ 多地址 + 默认地址 |
+
+---
+
+## 兼容性与迁移
+
+运行时会自动补齐旧库缺失列（首次启动生效）：
+
+- `address.is_default`
+- `order.receiver_name / receiver_phone / receiver_address_text / receiver_postal_code`
+- `order_item.shipped_qty / shipped_tracking_number / shipped_at`
+
+若需更完整说明，请参见：`docs/DATABASE_SCHEMA_DETAIL.md`
 
 ---
 

@@ -154,6 +154,11 @@ flask db migrate -m "说明" # 生成新迁移（改模型后）
 
 Docker 下：`docker compose exec moly_daigou flask db upgrade`
 
+## 数据库文档
+
+- 详细结构文档：`docs/DATABASE_SCHEMA_DETAIL.md`
+- 简版结构说明：`docs/DATABASE_SCHEMA.md`
+
 ## 仓储与 RFID 入库
 
 - **后台**：仓储可视化页可查看库存、销量趋势与柱状图；规格使用「逻辑编号」（按商品从 1 开始）。
